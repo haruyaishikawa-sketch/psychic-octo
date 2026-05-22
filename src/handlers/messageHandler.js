@@ -243,10 +243,10 @@ async function handleMessage(client, event) {
         contents: {
           type: 'bubble',
           header: { type:'box', layout:'vertical', backgroundColor:'#1B3A2D', paddingAll:'14px',
-            contents: [{ type:'text', text:'🌲 材木店LINE連携デモ', color:'#fff', weight:'bold', size:'lg' }]},
+            contents: [{ type:'text', text:'🌲 材木店LINE連携デモ', color:'#ffffff', weight:'bold', size:'lg' }]},
           body: { type:'box', layout:'vertical', paddingAll:'14px', spacing:'sm',
             contents: [
-              { type:'text', text:'以下の順番で操作してみてください', size:'sm', color:'#555', wrap:true },
+              { type:'text', text:'以下の順番で操作してみてください', size:'sm', color:'#555555', wrap:true },
               { type:'separator', margin:'sm' },
               ...[
                 ['1','受注登録 田中建設 杉板2×4 100枚'],
@@ -260,11 +260,11 @@ async function handleMessage(client, event) {
                 type:'box', layout:'horizontal', margin:'xs',
                 contents:[
                   { type:'text', text:`${n}.`, size:'xs', color:'#1B5E20', flex:1, weight:'bold' },
-                  { type:'text', text:cmd, size:'xs', flex:9, wrap:true, color:'#333' },
+                  { type:'text', text:cmd, size:'xs', flex:9, wrap:true, color:'#333333' },
                 ],
               })),
               { type:'separator', margin:'sm' },
-              { type:'text', text:'ヘルプ → 全コマンド一覧', size:'xs', color:'#888', margin:'sm' },
+              { type:'text', text:'ヘルプ → 全コマンド一覧', size:'xs', color:'#888888', margin:'sm' },
             ]},
         },
       }] });

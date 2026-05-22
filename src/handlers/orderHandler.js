@@ -154,26 +154,26 @@ async function handleStartInspection(client, replyToken, orderId) {
     contents:{
       type:'bubble',
       header:{ type:'box', layout:'vertical', backgroundColor:'#1D4ED8', paddingAll:'12px',
-        contents:[{ type:'text', text:'🔍 検収確認', color:'#fff', weight:'bold', size:'md' }]},
+        contents:[{ type:'text', text:'🔍 検収確認', color:'#ffffff', weight:'bold', size:'md' }]},
       body:{ type:'box', layout:'vertical', paddingAll:'12px',
         contents:[
           { type:'box', layout:'horizontal', contents:[
-            { type:'text', text:'発注ID', size:'xs', color:'#888', flex:3 },
+            { type:'text', text:'発注ID', size:'xs', color:'#888888', flex:3 },
             { type:'text', text:String(order.id), size:'sm', flex:7 },
           ]},
           { type:'box', layout:'horizontal', margin:'xs', contents:[
-            { type:'text', text:'品名', size:'xs', color:'#888', flex:3 },
+            { type:'text', text:'品名', size:'xs', color:'#888888', flex:3 },
             { type:'text', text:`${order.product_name}`, size:'sm', flex:7, wrap:true },
           ]},
           { type:'box', layout:'horizontal', margin:'xs', contents:[
-            { type:'text', text:'発注数量', size:'xs', color:'#888', flex:3 },
+            { type:'text', text:'発注数量', size:'xs', color:'#888888', flex:3 },
             { type:'text', text:`${order.quantity}`, size:'sm', flex:7 },
           ]},
           { type:'box', layout:'horizontal', margin:'xs', contents:[
-            { type:'text', text:'仕入先', size:'xs', color:'#888', flex:3 },
+            { type:'text', text:'仕入先', size:'xs', color:'#888888', flex:3 },
             { type:'text', text:order.supplier_name||'—', size:'sm', flex:7 },
           ]},
-          { type:'text', text:'納品内容を確認して検収してください', size:'xs', color:'#555', margin:'md', wrap:true },
+          { type:'text', text:'納品内容を確認して検収してください', size:'xs', color:'#555555', margin:'md', wrap:true },
         ]},
       footer:{ type:'box', layout:'horizontal', spacing:'sm', paddingAll:'12px',
         contents:[

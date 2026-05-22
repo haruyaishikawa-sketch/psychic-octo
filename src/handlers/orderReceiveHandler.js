@@ -63,13 +63,13 @@ async function handleRegisterOrder(client, replyToken, customerName, itemsText) 
       type: 'bubble',
       header: { type:'box', layout:'vertical', backgroundColor:'#1B3A2D', paddingAll:'12px',
         contents: [
-          { type:'text', text:'📦 受注登録完了', color:'#fff', weight:'bold', size:'md' },
+          { type:'text', text:'📦 受注登録完了', color:'#ffffff', weight:'bold', size:'md' },
           { type:'text', text:orderNumber, color:'#a5d6a7', size:'xs', margin:'xs' },
         ]},
       body: { type:'box', layout:'vertical', paddingAll:'12px',
         contents: [
           { type:'box', layout:'horizontal', contents:[
-            { type:'text', text:'顧客', size:'xs', color:'#888', flex:3 },
+            { type:'text', text:'顧客', size:'xs', color:'#888888', flex:3 },
             { type:'text', text:customer.company_name, size:'sm', weight:'bold', flex:7 },
           ]},
           { type:'separator', margin:'sm' },
@@ -86,7 +86,7 @@ async function handleRegisterOrder(client, replyToken, customerName, itemsText) 
               { type:'text', text:fmtMoney(total), size:'sm', weight:'bold', flex:5, align:'end', color:'#1B3A2D' },
             ]},
           ...(shortages.length>0 ? [{ type:'text', text:`⚠️ 在庫不足 ${shortages.length}品目`, size:'xs', color:'#e53935', margin:'sm', wrap:true }] : []),
-          { type:'text', text:'「受注一覧」で全受注を確認できます', size:'xs', color:'#888', margin:'sm' },
+          { type:'text', text:'「受注一覧」で全受注を確認できます', size:'xs', color:'#888888', margin:'sm' },
         ]},
     },
   }] });
@@ -110,15 +110,15 @@ async function handleListOrders(client, replyToken) {
       type:'bubble', size:'micro',
       header:{ type:'box', layout:'vertical', backgroundColor: statusColor[o.status]||'#1B3A2D', paddingAll:'8px',
         contents:[
-          { type:'text', text:o.order_number, color:'#fff', size:'xs', weight:'bold' },
-          { type:'text', text:o.status, color:'#fff', size:'xs', margin:'xs' },
+          { type:'text', text:o.order_number, color:'#ffffff', size:'xs', weight:'bold' },
+          { type:'text', text:o.status, color:'#ffffff', size:'xs', margin:'xs' },
         ]},
       body:{ type:'box', layout:'vertical', paddingAll:'10px',
         contents:[
           { type:'text', text:o.customer_name, size:'sm', weight:'bold' },
-          { type:'text', text:itemSummary, size:'xs', color:'#555', margin:'xs', wrap:true },
+          { type:'text', text:itemSummary, size:'xs', color:'#555555', margin:'xs', wrap:true },
           { type:'text', text:fmtMoney(o.total_amount), size:'sm', weight:'bold', color:'#1B3A2D', margin:'xs' },
-          { type:'text', text:o.created_at.slice(0,10), size:'xs', color:'#888' },
+          { type:'text', text:o.created_at.slice(0,10), size:'xs', color:'#888888' },
         ]},
     };
   });

@@ -7,10 +7,11 @@
  * メイン処理には一切影響を与えない。
  */
 
-const nodemailer = require('nodemailer');
-const fs         = require('fs');
-const path       = require('path');
-const { getDb }  = require('../db/database');
+const nodemailer   = require('nodemailer');
+const { google }   = require('googleapis');
+const fs           = require('fs');
+const path         = require('path');
+const { getDb }    = require('../db/database');
 
 // ────────────────────────────────────────────────────────────────
 // 状態管理
@@ -38,14 +39,22 @@ async function initGmail() {
   }
 
   try {
+    // googleapis OAuth2 クライアントでアクセストークンを取得
+    const oauth2Client = new google.auth.OAuth2(clientId, clientSecret);
+    oauth2Client.setCredentials({ refresh_token: refreshToken });
+    const { token: accessToken } = await oauth2Client.getAccessToken();
+
     transporter = nodemailer.createTransport({
-      service: 'gmail',
+      host  : 'smtp.gmail.com',
+      port  : 465,
+      secure: true,
       auth: {
-        type         : 'OAuth2',
-        user         : fromAddress,
+        type        : 'OAuth2',
+        user        : fromAddress,
         clientId,
         clientSecret,
         refreshToken,
+        accessToken,
       },
     });
     // 接続確認

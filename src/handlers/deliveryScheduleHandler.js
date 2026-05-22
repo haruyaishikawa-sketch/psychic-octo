@@ -82,13 +82,13 @@ async function handleListDeliveries(client, replyToken, todayOnly = false) {
       type:'bubble', size:'micro',
       header:{ type:'box', layout:'vertical', backgroundColor: timeColor[d.time_slot]||'#1B3A2D', paddingAll:'8px',
         contents:[
-          { type:'text', text: isToday ? `今日（${d.time_slot}）` : `${dateObj.getMonth()+1}/${dateObj.getDate()}（${d.time_slot}）`, color:'#fff', size:'xs', weight:'bold' },
+          { type:'text', text: isToday ? `今日（${d.time_slot}）` : `${dateObj.getMonth()+1}/${dateObj.getDate()}（${d.time_slot}）`, color:'#ffffff', size:'xs', weight:'bold' },
         ]},
       body:{ type:'box', layout:'vertical', paddingAll:'10px',
         contents:[
           { type:'text', text:d.customer_name, size:'sm', weight:'bold' },
-          { type:'text', text:summary||'品目不明', size:'xs', color:'#555', margin:'xs', wrap:true },
-          { type:'text', text:d.order_number, size:'xs', color:'#888', margin:'xs' },
+          { type:'text', text:summary||'品目不明', size:'xs', color:'#555555', margin:'xs', wrap:true },
+          { type:'text', text:d.order_number, size:'xs', color:'#888888', margin:'xs' },
         ]},
       footer:{ type:'box', layout:'vertical', paddingAll:'8px',
         contents:[{
