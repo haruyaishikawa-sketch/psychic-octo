@@ -4,8 +4,9 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs');
 const { getDb } = require('../db/database');
-const { PDF_DIR } = require('../handlers/invoiceHandler');
+const { PDF_DIR, generateInvoicePdf } = require('../handlers/invoiceHandler');
 const { PDF_DIR_QUOTE } = require('../handlers/quoteHandler');
+const sheets = require('../integrations/sheetsSync');
 
 const router = express.Router();
 
@@ -79,12 +80,17 @@ router.get('/invoices', (req, res) => {
   try {
     const db = getDb();
     const { status } = req.query;
-    const query = status
-      ? 'SELECT * FROM invoices WHERE status = ? ORDER BY billing_month DESC'
-      : 'SELECT * FROM invoices ORDER BY billing_month DESC';
+    // customer_email を JOIN して返す
+    const baseQuery = `
+      SELECT i.*, c.email as customer_email
+      FROM invoices i
+      LEFT JOIN customers c ON i.customer_id = c.id
+      ${status ? 'WHERE i.status = ?' : ''}
+      ORDER BY i.billing_month DESC
+    `;
     const invoices = status
-      ? db.prepare(query).all(status)
-      : db.prepare(query).all();
+      ? db.prepare(baseQuery).all(status)
+      : db.prepare(baseQuery).all();
     res.json({ success: true, data: invoices });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -118,6 +124,101 @@ router.get('/invoices/:id/pdf', (req, res) => {
       return res.status(404).json({ success: false, error: 'PDFファイルが存在しません' });
     }
     res.download(pdfPath, invoice.pdf_path);
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// LINE送付
+router.post('/invoices/:id/send', async (req, res) => {
+  try {
+    const db = getDb();
+    const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id);
+    if (!invoice) return res.status(404).json({ success: false, error: '請求書が見つかりません' });
+
+    const customer = db.prepare('SELECT * FROM customers WHERE id = ?').get(invoice.customer_id);
+    if (!customer || !customer.line_user_id) {
+      return res.status(400).json({ success: false, error: `${invoice.customer_name} のLINEユーザーIDが登録されていません` });
+    }
+
+    // PDFがなければ生成
+    let pdfFilename = invoice.pdf_path;
+    if (!pdfFilename || !fs.existsSync(path.join(PDF_DIR, pdfFilename))) {
+      const items = JSON.parse(invoice.items || '[]');
+      pdfFilename = await generateInvoicePdf(invoice, items, customer);
+      db.prepare("UPDATE invoices SET pdf_path = ?, updated_at = datetime('now','localtime') WHERE id = ?")
+        .run(pdfFilename, invoice.id);
+    }
+
+    const lineClient = req.app.get('lineClient');
+    const serverUrl = process.env.SERVER_URL || '';
+    const pdfUrl = serverUrl ? `${serverUrl}/api/invoices/${invoice.id}/pdf` : null;
+
+    const msgText = [
+      `📄 請求書をお送りします`,
+      `請求書番号: ${invoice.invoice_number}`,
+      `対象月: ${invoice.billing_month}`,
+      `合計金額: ¥${invoice.total_amount.toLocaleString()}`,
+      `お支払期限: ${invoice.due_date || '—'}`,
+      pdfUrl ? `\nPDF: ${pdfUrl}` : '\n※PDFはメールにて別途お送りします',
+    ].join('\n');
+
+    await lineClient.pushMessage({ to: customer.line_user_id, messages: [{ type: 'text', text: msgText }] });
+    res.json({ success: true, data: { message: `${invoice.customer_name} に送付しました` } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// メール送付（管理画面から）
+router.post('/invoices/:id/send-email', async (req, res) => {
+  try {
+    const db = getDb();
+    const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id);
+    if (!invoice) return res.status(404).json({ success: false, error: '請求書が見つかりません' });
+
+    const customer = db.prepare('SELECT * FROM customers WHERE id = ?').get(invoice.customer_id);
+    if (!customer || !customer.email) {
+      return res.status(400).json({ success: false, error: `${invoice.customer_name} のメールアドレスが未登録です。顧客・掛け率タブで登録してください。` });
+    }
+
+    // PDFがなければ生成
+    let pdfFilename = invoice.pdf_path;
+    if (!pdfFilename || !fs.existsSync(path.join(PDF_DIR, pdfFilename))) {
+      const items = JSON.parse(invoice.items || '[]');
+      pdfFilename = await generateInvoicePdf({ ...invoice }, items, customer);
+      db.prepare("UPDATE invoices SET pdf_path = ?, updated_at = datetime('now','localtime') WHERE id = ?")
+        .run(pdfFilename, invoice.id);
+    }
+
+    const gmail = require('../integrations/gmailSend');
+    const pdfPath = path.join(PDF_DIR, pdfFilename);
+    const sent = await gmail.sendInvoiceEmail(invoice.customer_id, pdfPath, { ...invoice, pdf_path: pdfFilename });
+
+    if (sent) {
+      res.json({ success: true, data: { message: `${customer.company_name}（${customer.email}）に送付しました` } });
+    } else {
+      res.status(500).json({ success: false, error: 'Gmail連携が設定されていません。.envのGmail設定を確認してください。' });
+    }
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 入金確認（PUT）
+router.put('/invoices/:id/payment', (req, res) => {
+  try {
+    const db = getDb();
+    const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id);
+    if (!invoice) return res.status(404).json({ success: false, error: '請求書が見つかりません' });
+
+    db.prepare("UPDATE invoices SET status = 'paid', updated_at = datetime('now','localtime') WHERE id = ?")
+      .run(req.params.id);
+
+    // Sheets 同期
+    sheets.runAsync(sheets.updateInvoicePayment, Number(req.params.id));
+
+    res.json({ success: true, data: { id: req.params.id, status: 'paid' } });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -225,6 +326,21 @@ router.patch('/customers/:id/discount-rate', (req, res) => {
   }
 });
 
+// メールアドレス更新
+router.put('/customers/:id/email', (req, res) => {
+  try {
+    const db = getDb();
+    const { email } = req.body;
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ success: false, error: '無効なメールアドレス形式です' });
+    }
+    db.prepare('UPDATE customers SET email = ? WHERE id = ?').run(email || null, req.params.id);
+    res.json({ success: true, data: { id: req.params.id, email: email || null } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 router.get('/suppliers', (req, res) => {
   try {
     const db = getDb();
@@ -291,6 +407,73 @@ router.get('/dashboard', (req, res) => {
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
+});
+
+// ─── 受注管理 ────────────────────────────────────────────────────────
+
+router.get('/orders/received', (req, res) => {
+  try {
+    const db = getDb();
+    const { status } = req.query;
+    const orders = status
+      ? db.prepare('SELECT * FROM received_orders WHERE status = ? ORDER BY created_at DESC').all(status)
+      : db.prepare('SELECT * FROM received_orders ORDER BY created_at DESC').all();
+    res.json({ success:true, data:orders });
+  } catch(err) { res.status(500).json({ success:false, error:err.message }); }
+});
+
+router.get('/orders/received/:id', (req, res) => {
+  try {
+    const db = getDb();
+    const order = db.prepare('SELECT * FROM received_orders WHERE id = ?').get(req.params.id);
+    if (!order) return res.status(404).json({ success:false, error:'受注が見つかりません' });
+    res.json({ success:true, data:order });
+  } catch(err) { res.status(500).json({ success:false, error:err.message }); }
+});
+
+router.put('/orders/received/:id/status', (req, res) => {
+  try {
+    const db = getDb();
+    const { status } = req.body;
+    const validStatuses = ['受注済','出庫済','配達済','請求済','完了'];
+    if (!validStatuses.includes(status)) return res.status(400).json({ success:false, error:'無効なステータスです' });
+    db.prepare("UPDATE received_orders SET status=?, updated_at=datetime('now','localtime') WHERE id=?").run(status, req.params.id);
+    res.json({ success:true, data:{ id:req.params.id, status } });
+  } catch(err) { res.status(500).json({ success:false, error:err.message }); }
+});
+
+// ─── 配送管理 ────────────────────────────────────────────────────────
+
+router.get('/deliveries', (req, res) => {
+  try {
+    const db = getDb();
+    const { date } = req.query;
+    const deliveries = date
+      ? db.prepare('SELECT * FROM deliveries WHERE delivery_date = ? ORDER BY time_slot').all(date)
+      : db.prepare("SELECT * FROM deliveries WHERE delivery_date >= date('now','localtime','-1 day') ORDER BY delivery_date, time_slot LIMIT 30").all();
+    res.json({ success:true, data:deliveries });
+  } catch(err) { res.status(500).json({ success:false, error:err.message }); }
+});
+
+router.put('/deliveries/:id/complete', (req, res) => {
+  try {
+    const db = getDb();
+    const delivery = db.prepare('SELECT * FROM deliveries WHERE id = ?').get(req.params.id);
+    if (!delivery) return res.status(404).json({ success:false, error:'配送が見つかりません' });
+    db.prepare("UPDATE deliveries SET status='完了', updated_at=datetime('now','localtime') WHERE id=?").run(req.params.id);
+    db.prepare("UPDATE received_orders SET status='配達済', updated_at=datetime('now','localtime') WHERE order_number=?").run(delivery.order_number);
+    res.json({ success:true, data:{ id:req.params.id, status:'完了' } });
+  } catch(err) { res.status(500).json({ success:false, error:err.message }); }
+});
+
+// 出荷伝票PDF
+router.get('/shipments/:filename', (req, res) => {
+  try {
+    const { SHIPMENT_DIR } = require('../handlers/shipmentHandler');
+    const filePath = path.join(SHIPMENT_DIR, req.params.filename);
+    if (!fs.existsSync(filePath)) return res.status(404).json({ success:false, error:'ファイルが見つかりません' });
+    res.download(filePath, req.params.filename);
+  } catch(err) { res.status(500).json({ success:false, error:err.message }); }
 });
 
 module.exports = router;

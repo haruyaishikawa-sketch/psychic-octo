@@ -138,6 +138,8 @@
   <button class="tab-btn" onclick="switchTab('tab-invoices')">💴 請求書</button>
   <button class="tab-btn" onclick="switchTab('tab-customers')">👥 顧客・掛け率</button>
   <button class="tab-btn" onclick="switchTab('tab-calc')">📐 材積計算</button>
+  <button class="tab-btn" onclick="switchTab('tab-received-orders')">📦 受注管理</button>
+  <button class="tab-btn" onclick="switchTab('tab-deliveries')">🚚 配達管理</button>
   <button class="tab-btn" onclick="switchTab('tab-stocktake')">📋 棚卸し履歴</button>
   <button class="tab-btn" onclick="switchTab('tab-line')">📱 LINE送信</button>
 </div>
@@ -259,8 +261,8 @@
     <div class="section-header"><span class="section-title">👥 顧客一覧・掛け率設定</span></div>
     <div class="section-body">
       <table id="customers-table">
-        <thead><tr><th>会社名</th><th>担当者</th><th>電話</th><th>掛け率</th><th>割引率</th><th>変更</th></tr></thead>
-        <tbody><tr><td colspan="6" class="loading">読み込み中...</td></tr></tbody>
+        <thead><tr><th>会社名</th><th>担当者</th><th>電話</th><th>メールアドレス</th><th>掛け率</th><th>割引率</th><th>変更</th></tr></thead>
+        <tbody><tr><td colspan="7" class="loading">読み込み中...</td></tr></tbody>
       </table>
     </div>
   </div>
@@ -314,6 +316,53 @@
           <button class="btn btn-gray btn-sm" onclick="fillCalc(12,910,1820)">合板 12×910×1820</button>
         </div>
       </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- 受注管理 -->
+<div id="tab-received-orders" class="tab-content">
+<div class="container">
+  <div class="section">
+    <div class="section-header">
+      <span class="section-title">📦 受注管理</span>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-sm" onclick="filterReceivedOrders('')" id="ro-filter-all" style="background:#1B3A2D;color:#fff">全件</button>
+        <button class="btn btn-gray btn-sm" onclick="filterReceivedOrders('受注済')">受注済</button>
+        <button class="btn btn-gray btn-sm" onclick="filterReceivedOrders('出庫済')">出庫済</button>
+        <button class="btn btn-gray btn-sm" onclick="filterReceivedOrders('配達済')">配達済</button>
+        <button class="btn btn-gray btn-sm" onclick="filterReceivedOrders('請求済')">請求済</button>
+        <button class="btn btn-gray btn-sm" onclick="filterReceivedOrders('完了')">完了</button>
+      </div>
+    </div>
+    <div class="section-body">
+      <table id="received-orders-table">
+        <thead><tr><th>受注番号</th><th>顧客名</th><th>品目</th><th>金額</th><th>ステータス</th><th>受注日</th><th>操作</th></tr></thead>
+        <tbody><tr><td colspan="7" class="loading">読み込み中...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- 配達管理 -->
+<div id="tab-deliveries" class="tab-content">
+<div class="container">
+  <div class="section">
+    <div class="section-header">
+      <span class="section-title">🚚 配達管理</span>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-sm" onclick="filterDeliveries('')" style="background:#1B3A2D;color:#fff">全件</button>
+        <button class="btn btn-gray btn-sm" onclick="filterDeliveries(todayStr())">今日</button>
+        <button class="btn btn-gray btn-sm" onclick="filterDeliveries(tomorrowStr())">明日</button>
+      </div>
+    </div>
+    <div class="section-body">
+      <table id="deliveries-table">
+        <thead><tr><th>配送日</th><th>時間帯</th><th>顧客名</th><th>受注番号</th><th>ステータス</th><th>操作</th></tr></thead>
+        <tbody><tr><td colspan="6" class="loading">読み込み中...</td></tr></tbody>
+      </table>
     </div>
   </div>
 </div>
@@ -393,6 +442,18 @@
 </div>
 </div>
 
+<!-- 請求書メール送付 確認モーダル -->
+<div id="invoice-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:12px;padding:28px;max-width:460px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.2)">
+    <h3 style="margin:0 0 16px;color:#1B3A2D;font-size:16px">📧 請求書メール送付の確認</h3>
+    <div id="invoice-modal-body" style="font-size:13px;line-height:1.8;background:#f9f9f9;border-radius:8px;padding:14px;margin-bottom:16px"></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn btn-gray" onclick="closeInvoiceModal()">キャンセル</button>
+      <button class="btn btn-green" id="invoice-modal-confirm">📧 送付する</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script>
@@ -406,13 +467,15 @@ function switchTab(id) {
   event.target.classList.add('active');
   // タブに応じてデータ読み込み
   const loaders = {
-    'tab-inventory':  loadProducts,
-    'tab-orders':     loadOrders,
-    'tab-quotes':     loadQuotes,
-    'tab-delivery':   loadDelivery,
-    'tab-invoices':   loadInvoices,
-    'tab-customers':  loadCustomers,
-    'tab-stocktake':  loadAdjustments,
+    'tab-inventory':       loadProducts,
+    'tab-orders':          loadOrders,
+    'tab-quotes':          loadQuotes,
+    'tab-delivery':        loadDelivery,
+    'tab-invoices':        loadInvoices,
+    'tab-customers':       loadCustomers,
+    'tab-stocktake':       loadAdjustments,
+    'tab-received-orders': loadReceivedOrders,
+    'tab-deliveries':      loadDeliveries,
   };
   if (loaders[id]) loaders[id]();
 }
@@ -592,7 +655,7 @@ async function loadInvoices() {
   try {
     const invoices = await api('/invoices');
     if (!invoices.length) { tbody.innerHTML='<tr class="empty-row"><td colspan="9">データなし</td></tr>'; return; }
-    tbody.innerHTML = invoices.map(inv => `<tr>
+    tbody.innerHTML = invoices.map(inv => `<tr data-id="${inv.id}">
       <td style="font-size:12px;font-weight:700">${inv.invoice_number||'—'}</td>
       <td><strong>${inv.customer_name}</strong></td>
       <td>${inv.billing_month}</td>
@@ -601,19 +664,73 @@ async function loadInvoices() {
       <td><strong>${fmtMoney(inv.total_amount)}</strong></td>
       <td style="font-size:12px;color:var(--red)">${inv.due_date||'—'}</td>
       <td><span class="badge badge-${inv.status}">${labelStatus(inv.status)}</span></td>
-      <td>
-        ${inv.pdf_path?`<a href="${API}/invoices/${inv.id}/pdf" target="_blank"><button class="btn btn-gray btn-sm">📄 PDF</button></a> `:''}
-        ${inv.status==='unpaid'?`<button class="btn btn-blue btn-sm" onclick="markInvoicePaid(${inv.id})">💴 入金済に</button>`:''}
+      <td style="white-space:nowrap">
+        <button class="btn btn-gray btn-sm" onclick="downloadInvoicePdf(${inv.id})">📄 PDF</button>
+        <button class="btn btn-green btn-sm" onclick="sendInvoiceEmail(${inv.id},'${inv.customer_name.replace(/'/g,"\\'")}','${(inv.customer_email||'').replace(/'/g,"\\'")}','${(inv.invoice_number||'').replace(/'/g,"\\'")}','${fmtMoney(inv.total_amount)}','${inv.due_date||'—'}')">📧 メール</button>
+        ${inv.status==='unpaid'?`<button class="btn btn-blue btn-sm" onclick="markInvoicePaid(${inv.id},'${(inv.invoice_number||'#'+inv.id).replace(/'/g,"\\'")}')">💴 入金済</button>`:''}
       </td>
     </tr>`).join('');
   } catch(e) { tbody.innerHTML=`<tr class="empty-row"><td colspan="9">エラー: ${e.message}</td></tr>`; }
 }
 
-async function markInvoicePaid(id) {
-  if (!confirm(`請求書 #${id} を「支払済」にしますか？`)) return;
+async function downloadInvoicePdf(id) {
   try {
-    await api(`/invoices/${id}/status`, { method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify({status:'paid'}) });
-    showToast(`請求書 #${id} を支払済にしました`);
+    const r = await fetch(`${API}/invoices/${id}/pdf`);
+    if (!r.ok) {
+      const j = await r.json().catch(()=>({error:'PDFが見つかりません'}));
+      showToast(j.error || 'PDFダウンロード失敗', true); return;
+    }
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `invoice-${id}.pdf`; a.click();
+    URL.revokeObjectURL(url);
+  } catch(e) { showToast('PDFダウンロード失敗: ' + e.message, true); }
+}
+
+async function sendInvoiceEmail(id, customerName, customerEmail, invoiceNumber, total, dueDate) {
+  // 確認モーダルを表示
+  const modal = document.getElementById('invoice-modal');
+  const body  = document.getElementById('invoice-modal-body');
+  body.innerHTML = `
+    <div><strong>請求書番号:</strong> ${invoiceNumber}</div>
+    <div><strong>顧客:</strong> ${customerName}</div>
+    <div><strong>合計金額:</strong> ${total}</div>
+    <div><strong>支払期限:</strong> ${dueDate}</div>
+    <div style="margin-top:10px;padding:8px;background:#EDF7ED;border-radius:6px;color:#1B5E20">
+      <strong>📧 送付先:</strong> ${customerEmail || '（未登録）'}
+    </div>
+    ${!customerEmail ? '<div style="color:#e53935;margin-top:8px;font-size:12px">⚠️ メールアドレスが未登録です。下の顧客・掛け率タブで登録してください。</div>' : ''}
+  `;
+  modal.style.display = 'flex';
+
+  // 送付ボタンの処理
+  const btn = document.getElementById('invoice-modal-confirm');
+  btn.onclick = async () => {
+    if (!customerEmail) { showToast('メールアドレスが未登録です', true); closeInvoiceModal(); return; }
+    btn.disabled = true; btn.textContent = '送付中...';
+    try {
+      const result = await api(`/invoices/${id}/send-email`, { method:'POST' });
+      showToast(`✅ ${result.message}`);
+      closeInvoiceModal();
+    } catch(e) {
+      showToast('送付失敗: ' + e.message, true);
+      btn.disabled = false; btn.textContent = '📧 送付する';
+    }
+  };
+}
+
+function closeInvoiceModal() {
+  document.getElementById('invoice-modal').style.display = 'none';
+  const btn = document.getElementById('invoice-modal-confirm');
+  btn.disabled = false; btn.textContent = '📧 送付する';
+}
+
+async function markInvoicePaid(id, invoiceNumber) {
+  if (!confirm(`${invoiceNumber} を「支払済」にしますか？`)) return;
+  try {
+    await api(`/invoices/${id}/payment`, { method:'PUT' });
+    showToast(`✅ ${invoiceNumber} を支払済にしました`);
     loadInvoices(); loadDashboard();
   } catch(e) { showToast(e.message, true); }
 }
@@ -630,6 +747,13 @@ async function loadCustomers() {
         <td><strong>${c.company_name}</strong></td>
         <td>${c.contact_person||'—'}</td>
         <td>${c.phone||'—'}</td>
+        <td>
+          <div style="display:flex;gap:4px;align-items:center">
+            <input type="email" id="email-${c.id}" value="${c.email||''}" placeholder="例: sample@example.com"
+              style="width:180px;padding:4px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px">
+            <button class="btn btn-green btn-sm" onclick="updateCustomerEmail(${c.id})">登録</button>
+          </div>
+        </td>
         <td><span class="rate-badge">${c.discount_rate}</span></td>
         <td style="color:var(--brown)">${discPct}% 引き</td>
         <td>
@@ -640,6 +764,15 @@ async function loadCustomers() {
       </tr>`;
     }).join('');
   } catch(e) { tbody.innerHTML=`<tr class="empty-row"><td colspan="6">エラー: ${e.message}</td></tr>`; }
+}
+
+async function updateCustomerEmail(id) {
+  const val = document.getElementById(`email-${id}`).value.trim();
+  try {
+    await api(`/customers/${id}/email`, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({email:val}) });
+    showToast(val ? `✅ メールアドレスを登録しました: ${val}` : 'メールアドレスを削除しました');
+    loadCustomers();
+  } catch(e) { showToast(e.message, true); }
 }
 
 async function updateDiscountRate(id) {
@@ -746,6 +879,91 @@ function loadAll() {
 
 loadAll();
 setInterval(loadAll, 30000);
+
+// ── 受注管理 ─────────────────────────────────────────────────────
+let currentRoStatus = '';
+async function loadReceivedOrders() {
+  const tbody = document.querySelector('#received-orders-table tbody');
+  try {
+    const url = currentRoStatus ? `/orders/received?status=${encodeURIComponent(currentRoStatus)}` : '/orders/received';
+    const orders = await api(url);
+    if (!orders.length) { tbody.innerHTML='<tr class="empty-row"><td colspan="7">データなし</td></tr>'; return; }
+    const statusColor = {'受注済':'#1D4ED8','出庫済':'#D97706','配達済':'#7C3AED','請求済':'#059669','完了':'#9CA3AF'};
+    tbody.innerHTML = orders.map(o => {
+      const items = JSON.parse(o.items||'[]');
+      const summary = items.slice(0,2).map(i=>`${i.product_name} ${i.quantity}${i.unit}`).join(' / ')+(items.length>2?` 他${items.length-2}件`:'');
+      const color = statusColor[o.status]||'#6B7280';
+      return `<tr>
+        <td style="font-size:12px;font-weight:700">${o.order_number}</td>
+        <td><strong>${o.customer_name}</strong></td>
+        <td style="font-size:12px">${summary}</td>
+        <td>${fmtMoney(o.total_amount)}</td>
+        <td><span class="badge" style="background:${color};color:#fff">${o.status}</span></td>
+        <td style="font-size:12px">${o.created_at.slice(0,10)}</td>
+        <td style="white-space:nowrap">
+          <select onchange="updateReceivedOrderStatus(${o.id},this.value)" style="font-size:12px;padding:2px 4px;border:1px solid #ddd;border-radius:4px">
+            ${['受注済','出庫済','配達済','請求済','完了'].map(s=>`<option value="${s}"${o.status===s?' selected':''}>${s}</option>`).join('')}
+          </select>
+        </td>
+      </tr>`;
+    }).join('');
+  } catch(e) { tbody.innerHTML=`<tr class="empty-row"><td colspan="7">エラー: ${e.message}</td></tr>`; }
+}
+
+function filterReceivedOrders(status) {
+  currentRoStatus = status;
+  loadReceivedOrders();
+}
+
+async function updateReceivedOrderStatus(id, status) {
+  try {
+    await api(`/orders/received/${id}/status`, {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({status})});
+    showToast(`✅ ステータスを「${status}」に更新しました`);
+  } catch(e) { showToast(e.message, true); loadReceivedOrders(); }
+}
+
+// ── 配達管理 ─────────────────────────────────────────────────────
+let currentDeliveryDate = '';
+function todayStr() { return new Date().toISOString().split('T')[0]; }
+function tomorrowStr() { const d=new Date(); d.setDate(d.getDate()+1); return d.toISOString().split('T')[0]; }
+
+async function loadDeliveries() {
+  const tbody = document.querySelector('#deliveries-table tbody');
+  try {
+    const url = currentDeliveryDate ? `/deliveries?date=${currentDeliveryDate}` : '/deliveries';
+    const deliveries = await api(url);
+    if (!deliveries.length) { tbody.innerHTML='<tr class="empty-row"><td colspan="6">データなし</td></tr>'; return; }
+    const timeColor = {'午前':'#1D4ED8','午後':'#D97706','指定なし':'#6B7280'};
+    tbody.innerHTML = deliveries.map(d => {
+      const isToday = d.delivery_date === todayStr();
+      const color = timeColor[d.time_slot]||'#6B7280';
+      return `<tr>
+        <td style="font-weight:${isToday?'700':'400'};color:${isToday?'var(--red)':'inherit'}">${d.delivery_date}</td>
+        <td><span class="badge" style="background:${color};color:#fff">${d.time_slot}</span></td>
+        <td><strong>${d.customer_name}</strong></td>
+        <td style="font-size:12px">${d.order_number||'—'}</td>
+        <td><span class="badge badge-${d.status==='完了'?'paid':'unpaid'}">${d.status}</span></td>
+        <td>
+          ${d.status!=='完了'?`<button class="btn btn-green btn-sm" onclick="completeDelivery(${d.id})">✅ 完了</button>`:'—'}
+        </td>
+      </tr>`;
+    }).join('');
+  } catch(e) { tbody.innerHTML=`<tr class="empty-row"><td colspan="6">エラー: ${e.message}</td></tr>`; }
+}
+
+function filterDeliveries(date) {
+  currentDeliveryDate = date;
+  loadDeliveries();
+}
+
+async function completeDelivery(id) {
+  if (!confirm('配達完了にしますか？')) return;
+  try {
+    await api(`/deliveries/${id}/complete`, {method:'PUT'});
+    showToast('✅ 配達完了しました');
+    loadDeliveries(); loadReceivedOrders();
+  } catch(e) { showToast(e.message, true); }
+}
 </script>
 </body>
 </html>

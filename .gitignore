@@ -13,6 +13,7 @@ node_modules/
 # 生成ファイル
 invoices/
 pdfs/
+shipments/
 
 # ログ
 *.log

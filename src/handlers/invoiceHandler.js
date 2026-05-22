@@ -58,6 +58,119 @@ function findCustomer(db, name) {
   return db.prepare('SELECT * FROM customers WHERE company_name LIKE ?').get(`%${name}%`);
 }
 
+/** 請求書確認 Flex メッセージを生成 */
+function buildInvoiceConfirmFlex(invoice, items, customer, result) {
+  const { subtotal, taxAmount, total } = result;
+  const hasEmail = !!customer.email;
+
+  const itemRows = items.slice(0, 5).map(item => ({
+    type: 'box', layout: 'horizontal', margin: 'xs',
+    contents: [
+      { type: 'text', text: item.product_name, size: 'xs', flex: 5, wrap: true, color: '#444' },
+      { type: 'text', text: `${item.quantity}${item.unit}`, size: 'xs', flex: 2, align: 'center', color: '#666' },
+      { type: 'text', text: fmtMoney(item.amount), size: 'xs', flex: 3, align: 'end', color: '#444' },
+    ],
+  }));
+
+  return {
+    type: 'flex',
+    altText: `請求書確認 ${invoice.invoice_number}`,
+    contents: {
+      type: 'bubble',
+      header: {
+        type: 'box', layout: 'vertical', backgroundColor: '#1B5E20', paddingAll: '12px',
+        contents: [
+          { type: 'text', text: '📄 請求書を生成しました', color: '#ffffff', weight: 'bold', size: 'md' },
+          { type: 'text', text: invoice.invoice_number, color: '#a5d6a7', size: 'xs', margin: 'xs' },
+        ],
+      },
+      body: {
+        type: 'box', layout: 'vertical', paddingAll: '12px',
+        contents: [
+          {
+            type: 'box', layout: 'horizontal',
+            contents: [
+              { type: 'text', text: '請求先', size: 'xs', color: '#888', flex: 3 },
+              { type: 'text', text: `${customer.company_name} 御中`, size: 'sm', weight: 'bold', flex: 7, wrap: true },
+            ],
+          },
+          {
+            type: 'box', layout: 'horizontal', margin: 'xs',
+            contents: [
+              { type: 'text', text: '対象月', size: 'xs', color: '#888', flex: 3 },
+              { type: 'text', text: invoice.billing_month, size: 'sm', flex: 7 },
+            ],
+          },
+          { type: 'separator', margin: 'sm' },
+          {
+            type: 'box', layout: 'horizontal', margin: 'xs',
+            contents: [
+              { type: 'text', text: '品名', size: 'xs', color: '#888', flex: 5, weight: 'bold' },
+              { type: 'text', text: '数量', size: 'xs', color: '#888', flex: 2, align: 'center', weight: 'bold' },
+              { type: 'text', text: '金額', size: 'xs', color: '#888', flex: 3, align: 'end', weight: 'bold' },
+            ],
+          },
+          ...itemRows,
+          ...(items.length > 5 ? [{ type: 'text', text: `他 ${items.length - 5} 件`, size: 'xs', color: '#888', margin: 'xs' }] : []),
+          { type: 'separator', margin: 'sm' },
+          {
+            type: 'box', layout: 'horizontal', margin: 'sm',
+            contents: [
+              { type: 'text', text: '小計', size: 'xs', color: '#888', flex: 5 },
+              { type: 'text', text: fmtMoney(subtotal), size: 'xs', flex: 5, align: 'end' },
+            ],
+          },
+          {
+            type: 'box', layout: 'horizontal',
+            contents: [
+              { type: 'text', text: '消費税(10%)', size: 'xs', color: '#888', flex: 5 },
+              { type: 'text', text: fmtMoney(taxAmount), size: 'xs', flex: 5, align: 'end' },
+            ],
+          },
+          {
+            type: 'box', layout: 'horizontal', margin: 'xs',
+            contents: [
+              { type: 'text', text: '合計金額', size: 'sm', weight: 'bold', flex: 5 },
+              { type: 'text', text: fmtMoney(total), size: 'sm', weight: 'bold', flex: 5, align: 'end', color: '#1B5E20' },
+            ],
+          },
+          {
+            type: 'box', layout: 'horizontal',
+            contents: [
+              { type: 'text', text: '支払期限', size: 'xs', color: '#888', flex: 5 },
+              { type: 'text', text: invoice.due_date || '—', size: 'xs', color: '#DC2626', flex: 5, align: 'end' },
+            ],
+          },
+          { type: 'separator', margin: 'sm' },
+          {
+            type: 'text',
+            text: hasEmail ? `📧 送付先: ${customer.email}` : '⚠️ メールアドレス未登録\n管理画面 → 顧客・掛け率タブで登録後、\n「請求書メール送付」ボタンを押してください',
+            size: 'xs',
+            color: hasEmail ? '#388E3C' : '#e53935',
+            margin: 'sm',
+            wrap: true,
+          },
+        ],
+      },
+      footer: {
+        type: 'box', layout: 'horizontal', spacing: 'sm', paddingAll: '12px',
+        contents: [
+          {
+            type: 'button',
+            action: { type: 'postback', label: '📧 メールで送付', data: `action=invoice_send_email&invoiceId=${invoice.id}` },
+            style: 'primary', color: '#1B5E20', height: 'sm', flex: 3,
+          },
+          {
+            type: 'button',
+            action: { type: 'message', label: 'キャンセル', text: 'キャンセル' },
+            style: 'secondary', height: 'sm', flex: 2,
+          },
+        ],
+      },
+    },
+  };
+}
+
 // ────────────────────────────────────────────────────────────────
 // PDF 生成
 // ────────────────────────────────────────────────────────────────
@@ -377,21 +490,8 @@ async function handleCreateInvoice(client, replyToken, customerName, billingMont
     return client.replyMessage({ replyToken, messages: [{ type: 'text', text: `❌ ${result.error}` }]});
   }
 
-  const { invoice, total } = result;
-  const serverUrl = process.env.SERVER_URL || '';
-  const pdfLink   = serverUrl ? `\nPDF: ${serverUrl}/api/invoices/${invoice.id}/pdf` : '\n（管理画面 → 請求書タブからPDFダウンロード）';
-
-  return client.replyMessage({ replyToken, messages: [{
-    type: 'text',
-    text: `✅ 請求書を生成しました\n\n` +
-          `請求書番号：${invoice.invoice_number}\n` +
-          `顧客：${customer.company_name}\n` +
-          `対象月：${billingMonth}\n` +
-          `小計：${fmtMoney(result.subtotal)}\n` +
-          `消費税：${fmtMoney(result.taxAmount)}\n` +
-          `合計：${fmtMoney(total)}\n` +
-          `支払期限：${invoice.due_date}${pdfLink}`,
-  }]});
+  const flex = buildInvoiceConfirmFlex(result.invoice, finalItems, customer, result);
+  return client.replyMessage({ replyToken, messages: [flex] });
 }
 
 /**
@@ -421,19 +521,8 @@ async function handleCreateInvoiceManual(client, replyToken, customerName, items
     return client.replyMessage({ replyToken, messages: [{ type: 'text', text: `❌ ${result.error}` }]});
   }
 
-  const { invoice, total } = result;
-  const serverUrl = process.env.SERVER_URL || '';
-  const pdfLink   = serverUrl ? `\nPDF: ${serverUrl}/api/invoices/${invoice.id}/pdf` : '\n（管理画面からPDFダウンロード）';
-
-  return client.replyMessage({ replyToken, messages: [{
-    type: 'text',
-    text: `✅ 請求書を生成しました（手動明細）\n\n` +
-          `請求書番号：${invoice.invoice_number}\n` +
-          `顧客：${customer.company_name}\n` +
-          `明細数：${items.length}件\n` +
-          `合計：${fmtMoney(total)}（税込）\n` +
-          `支払期限：${invoice.due_date}${pdfLink}`,
-  }]});
+  const flex = buildInvoiceConfirmFlex(result.invoice, items, customer, result);
+  return client.replyMessage({ replyToken, messages: [flex] });
 }
 
 /**
@@ -614,6 +703,46 @@ async function handleSendMonthlyReport(client, replyToken) {
 }
 
 /**
+ * postback: action=invoice_send_email&invoiceId=X
+ * 請求書をメールで送付する（確認Flexのボタンから呼ばれる）
+ */
+async function handleSendInvoiceEmailByPostback(client, replyToken, invoiceId) {
+  const db      = getDb();
+  const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(Number(invoiceId));
+  if (!invoice) {
+    return client.replyMessage({ replyToken, messages: [{ type: 'text', text: '請求書が見つかりません。' }] });
+  }
+
+  const customer = db.prepare('SELECT * FROM customers WHERE id = ?').get(invoice.customer_id);
+  if (!customer || !customer.email) {
+    return client.replyMessage({ replyToken, messages: [{
+      type: 'text',
+      text: `❌ ${invoice.customer_name} のメールアドレスが未登録です。\n\n管理画面 → 顧客・掛け率タブで\nメールアドレスを登録してください。`,
+    }] });
+  }
+
+  const pdfPath = path.join(PDF_DIR, invoice.pdf_path || '');
+  if (!invoice.pdf_path || !require('fs').existsSync(pdfPath)) {
+    return client.replyMessage({ replyToken, messages: [{
+      type: 'text', text: `❌ PDFが見つかりません。\n先に「請求書作成」コマンドでPDFを生成してください。`,
+    }] });
+  }
+
+  const sent = await gmail.sendInvoiceEmail(invoice.customer_id, pdfPath, invoice);
+  if (sent) {
+    return client.replyMessage({ replyToken, messages: [{
+      type: 'text',
+      text: `✅ メールを送付しました\n\n宛先: ${customer.email}\n請求書番号: ${invoice.invoice_number}\n合計: ${fmtMoney(invoice.total_amount)}\n支払期限: ${invoice.due_date || '—'}`,
+    }] });
+  } else {
+    return client.replyMessage({ replyToken, messages: [{
+      type: 'text',
+      text: `❌ メール送付に失敗しました。\nGmail連携が設定されていない可能性があります。\n\nPDFは管理画面の請求書タブからダウンロードできます。`,
+    }] });
+  }
+}
+
+/**
  * 未払い請求書一覧
  */
 async function handleUnpaidInvoices(client, replyToken) {
@@ -629,6 +758,7 @@ module.exports = {
   handleSendInvoice,
   handleMarkPaidByNumber,
   handleSendInvoiceEmail,
+  handleSendInvoiceEmailByPostback,
   handleSendMonthlyReport,
   handleUnpaidInvoices,
   generateInvoicePdf,

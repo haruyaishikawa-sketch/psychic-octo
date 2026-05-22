@@ -1,13 +1,17 @@
 'use strict';
 
 const { handleInventoryList, handleProductSearch, handleStockIn, handleStockOut } = require('./inventoryHandler');
-const { handleOrderList, handleCreateOrder, handleApproveOrder, handleRejectOrder } = require('./orderHandler');
+const { handleOrderList, handleCreateOrder, handleApproveOrder, handleRejectOrder, handleStartInspection, handleInspectionOk, handleInspectionNg } = require('./orderHandler');
+const { handleRegisterOrder, handleListOrders, handleCheckOrder } = require('./orderReceiveHandler');
+const { handleGenerateShipment } = require('./shipmentHandler');
+const { handleRegisterDelivery, handleListDeliveries, handleCompleteDelivery } = require('./deliveryScheduleHandler');
 const {
   handleCreateInvoice,
   handleCreateInvoiceManual,
   handleSendInvoice,
   handleMarkPaidByNumber,
   handleSendInvoiceEmail,
+  handleSendInvoiceEmailByPostback,
   handleSendMonthlyReport,
   handleUnpaidInvoices,
 } = require('./invoiceHandler');
@@ -183,6 +187,89 @@ async function handleMessage(client, event) {
       return await handleCalc(client, replyToken, args);
     }
 
+    // ─── 受注管理 ────────────────────────────────────────────────────
+    if (text === '受注一覧') {
+      return await handleListOrders(client, replyToken);
+    }
+    const orderRegMatch = text.match(/^受注登録\s+(.+?)\s+(.+)$/);
+    if (orderRegMatch) {
+      return await handleRegisterOrder(client, replyToken, orderRegMatch[1].trim(), orderRegMatch[2].trim());
+    }
+    const orderCheckMatch = text.match(/^受注確認\s+(ORD-\d{8}-\d{3})$/i);
+    if (orderCheckMatch) {
+      return await handleCheckOrder(client, replyToken, orderCheckMatch[1].toUpperCase());
+    }
+
+    // ─── 出荷伝票 ────────────────────────────────────────────────────
+    const shipmentMatch = text.match(/^出荷伝票\s+(ORD-\d{8}-\d{3})$/i);
+    if (shipmentMatch) {
+      return await handleGenerateShipment(client, replyToken, shipmentMatch[1].toUpperCase());
+    }
+
+    // ─── 配達管理 ────────────────────────────────────────────────────
+    if (text === '配達一覧') {
+      return await handleListDeliveries(client, replyToken, false);
+    }
+    if (text === '今日の配達') {
+      return await handleListDeliveries(client, replyToken, true);
+    }
+    const deliveryRegMatch = text.match(/^配達登録\s+(ORD-\d{8}-\d{3})\s+(.+)$/i);
+    if (deliveryRegMatch) {
+      return await handleRegisterDelivery(client, replyToken, deliveryRegMatch[1].toUpperCase(), deliveryRegMatch[2].trim());
+    }
+    const deliveryCompleteMatch = text.match(/^配達完了\s+(ORD-\d{8}-\d{3})$/i);
+    if (deliveryCompleteMatch) {
+      return await handleCompleteDelivery(client, replyToken, deliveryCompleteMatch[1].toUpperCase());
+    }
+
+    // ─── 検収 ────────────────────────────────────────────────────────
+    const inspectStartMatch = text.match(/^検収開始\s+(\d+)$/);
+    if (inspectStartMatch) {
+      return await handleStartInspection(client, replyToken, parseInt(inspectStartMatch[1],10));
+    }
+    const inspectOkMatch = text.match(/^検収OK\s+(\d+)$/i);
+    if (inspectOkMatch) {
+      return await handleInspectionOk(client, replyToken, parseInt(inspectOkMatch[1],10));
+    }
+    const inspectNgMatch = text.match(/^検収NG\s+(\d+)(?:\s+(.+))?$/i);
+    if (inspectNgMatch) {
+      return await handleInspectionNg(client, replyToken, parseInt(inspectNgMatch[1],10), inspectNgMatch[2], adminLineId);
+    }
+
+    // ─── デモ ────────────────────────────────────────────────────────
+    if (text === 'デモ開始') {
+      return await client.replyMessage({ replyToken, messages: [{
+        type: 'flex', altText: 'デモ操作ガイド',
+        contents: {
+          type: 'bubble',
+          header: { type:'box', layout:'vertical', backgroundColor:'#1B3A2D', paddingAll:'14px',
+            contents: [{ type:'text', text:'🌲 材木店LINE連携デモ', color:'#fff', weight:'bold', size:'lg' }]},
+          body: { type:'box', layout:'vertical', paddingAll:'14px', spacing:'sm',
+            contents: [
+              { type:'text', text:'以下の順番で操作してみてください', size:'sm', color:'#555', wrap:true },
+              { type:'separator', margin:'sm' },
+              ...[
+                ['1','受注登録 田中建設 杉板2×4 100枚'],
+                ['2','在庫確認'],
+                ['3','出庫 杉板 100（在庫から出庫）'],
+                ['4','配達登録 ORD-XXXXXXXX 明日午前'],
+                ['5','納品書 田中建設 杉板2×4 100枚'],
+                ['6','請求書作成 田中建設 2026年5月'],
+                ['7','入金確認 INV-XXXXXXXX-XXX'],
+              ].map(([n,cmd]) => ({
+                type:'box', layout:'horizontal', margin:'xs',
+                contents:[
+                  { type:'text', text:`${n}.`, size:'xs', color:'#1B5E20', flex:1, weight:'bold' },
+                  { type:'text', text:cmd, size:'xs', flex:9, wrap:true, color:'#333' },
+                ],
+              })),
+              { type:'separator', margin:'sm' },
+              { type:'text', text:'ヘルプ → 全コマンド一覧', size:'xs', color:'#888', margin:'sm' },
+            ]},
+        },
+      }] });
+    }
+
     // ─── ヘルプ ────────────────────────────────────────────────────────
     if (text === 'ヘルプ' || text === 'help' || text === 'メニュー') {
       return await client.replyMessage({ replyToken, messages: [buildHelpFlex()] });
@@ -243,6 +330,21 @@ async function handlePostback(client, event) {
 
       case 'stocktake_cancel':
         return await cancelStocktake(client, replyToken, userId);
+
+      // ─── 請求書メール送付 ──────────────────────────────────────────
+      case 'invoice_send_email':
+        return await handleSendInvoiceEmailByPostback(client, replyToken, params.invoiceId);
+
+      // ─── 配達完了 ──────────────────────────────────────────────
+      case 'delivery_complete':
+        return await handleCompleteDelivery(client, replyToken, params.orderId);
+
+      // ─── 検収 ──────────────────────────────────────────────────
+      case 'inspection_ok':
+        return await handleInspectionOk(client, replyToken, parseInt(params.orderId,10));
+
+      case 'inspection_ng':
+        return await handleInspectionNg(client, replyToken, parseInt(params.orderId,10), '', userId);
 
       default:
         return await client.replyMessage({ replyToken, messages: [{ type: 'text', text: `不明なアクション: ${action}` }] });

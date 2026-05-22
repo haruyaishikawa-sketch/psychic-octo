@@ -11,6 +11,7 @@ const adminRoutes = require('./routes/adminRoutes');
 const { registerRichMenu } = require('./line/richMenu');
 const { initSheets }  = require('./integrations/sheetsSync');
 const { initGmail, sendMonthlyReportEmail } = require('./integrations/gmailSend');
+const { sendDailyDeliveryReminder } = require('./handlers/deliveryScheduleHandler');
 const cron = require('node-cron');
 
 // ─── LINE クライアント設定 ──────────────────────────────────────
@@ -92,6 +93,14 @@ app.listen(PORT, async () => {
     catch (err) { console.error('[Cron] 月次レポート送信失敗:', err.message); }
   }, { timezone: 'Asia/Tokyo' });
   console.log('[Cron] 月次レポート スケジュール登録済み（毎月1日 08:00 JST）');
+
+  // 毎朝8時の配達リマインド
+  cron.schedule('0 8 * * *', async () => {
+    console.log('[Cron] 配達リマインド送信...');
+    try { await sendDailyDeliveryReminder(lineClient); }
+    catch(err) { console.error('[Cron] 配達リマインド失敗:', err.message); }
+  }, { timezone: 'Asia/Tokyo' });
+  console.log('[Cron] 配達リマインド スケジュール登録済み（毎日 08:00 JST）');
 });
 
 module.exports = app;

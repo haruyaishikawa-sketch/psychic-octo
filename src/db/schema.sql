@@ -42,9 +42,12 @@ CREATE TABLE IF NOT EXISTS orders (
   quantity INTEGER NOT NULL,
   supplier_id INTEGER,
   supplier_name TEXT,
-  status TEXT NOT NULL DEFAULT 'pending',  -- pending / approved / rejected
+  status TEXT NOT NULL DEFAULT 'pending',  -- pending / approved / rejected / inspected / inspection_ng
   requested_by TEXT,
   approved_by TEXT,
+  inspection_status TEXT DEFAULT '未検収',
+  inspected_at TEXT,
+  inspection_memo TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
   FOREIGN KEY (product_id) REFERENCES products(id),
@@ -100,6 +103,35 @@ CREATE TABLE IF NOT EXISTS inventory_adjustments (
   diff INTEGER NOT NULL,
   adjuster_line_id TEXT,
   FOREIGN KEY (product_id) REFERENCES products(id)
+);
+
+-- 受注管理テーブル
+CREATE TABLE IF NOT EXISTS received_orders (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  order_number TEXT UNIQUE NOT NULL,
+  customer_id INTEGER,
+  customer_name TEXT NOT NULL,
+  items TEXT NOT NULL DEFAULT '[]',
+  total_amount INTEGER DEFAULT 0,
+  status TEXT NOT NULL DEFAULT '受注済',
+  notes TEXT DEFAULT '',
+  created_at TEXT DEFAULT (datetime('now','localtime')),
+  updated_at TEXT DEFAULT (datetime('now','localtime'))
+);
+
+-- 配送管理テーブル
+CREATE TABLE IF NOT EXISTS deliveries (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  received_order_id INTEGER,
+  order_number TEXT,
+  delivery_date TEXT NOT NULL,
+  time_slot TEXT DEFAULT '指定なし',
+  customer_name TEXT NOT NULL,
+  address TEXT DEFAULT '',
+  driver_memo TEXT DEFAULT '',
+  status TEXT DEFAULT '予定',
+  created_at TEXT DEFAULT (datetime('now','localtime')),
+  updated_at TEXT DEFAULT (datetime('now','localtime'))
 );
 
 -- 納品書テーブル

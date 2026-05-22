@@ -142,4 +142,104 @@ async function handleRejectOrder(client, replyToken, orderId) {
   });
 }
 
-module.exports = { handleOrderList, handleCreateOrder, handleApproveOrder, handleRejectOrder };
+/** 検収開始: 発注内容をFlexで表示 */
+async function handleStartInspection(client, replyToken, orderId) {
+  const db = getDb();
+  const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(Number(orderId));
+  if (!order) return client.replyMessage({ replyToken, messages:[{ type:'text', text:`発注ID ${orderId} が見つかりません。` }] });
+  if (order.status !== 'approved') return client.replyMessage({ replyToken, messages:[{ type:'text', text:`発注ID ${orderId} は承認済みではありません（現在: ${order.status}）。` }] });
+
+  return client.replyMessage({ replyToken, messages:[{
+    type:'flex', altText:`検収 発注ID:${orderId}`,
+    contents:{
+      type:'bubble',
+      header:{ type:'box', layout:'vertical', backgroundColor:'#1D4ED8', paddingAll:'12px',
+        contents:[{ type:'text', text:'🔍 検収確認', color:'#fff', weight:'bold', size:'md' }]},
+      body:{ type:'box', layout:'vertical', paddingAll:'12px',
+        contents:[
+          { type:'box', layout:'horizontal', contents:[
+            { type:'text', text:'発注ID', size:'xs', color:'#888', flex:3 },
+            { type:'text', text:String(order.id), size:'sm', flex:7 },
+          ]},
+          { type:'box', layout:'horizontal', margin:'xs', contents:[
+            { type:'text', text:'品名', size:'xs', color:'#888', flex:3 },
+            { type:'text', text:`${order.product_name}`, size:'sm', flex:7, wrap:true },
+          ]},
+          { type:'box', layout:'horizontal', margin:'xs', contents:[
+            { type:'text', text:'発注数量', size:'xs', color:'#888', flex:3 },
+            { type:'text', text:`${order.quantity}`, size:'sm', flex:7 },
+          ]},
+          { type:'box', layout:'horizontal', margin:'xs', contents:[
+            { type:'text', text:'仕入先', size:'xs', color:'#888', flex:3 },
+            { type:'text', text:order.supplier_name||'—', size:'sm', flex:7 },
+          ]},
+          { type:'text', text:'納品内容を確認して検収してください', size:'xs', color:'#555', margin:'md', wrap:true },
+        ]},
+      footer:{ type:'box', layout:'horizontal', spacing:'sm', paddingAll:'12px',
+        contents:[
+          { type:'button', style:'primary', color:'#059669', height:'sm',
+            action:{ type:'postback', label:'✅ 検収OK', data:`action=inspection_ok&orderId=${orderId}` }},
+          { type:'button', style:'secondary', height:'sm',
+            action:{ type:'postback', label:'❌ 検収NG', data:`action=inspection_ng&orderId=${orderId}` }},
+        ]},
+    },
+  }] });
+}
+
+/** 検収OK: 入庫処理 + ステータス更新 */
+async function handleInspectionOk(client, replyToken, orderId) {
+  const db = getDb();
+  const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(Number(orderId));
+  if (!order) return client.replyMessage({ replyToken, messages:[{ type:'text', text:`発注ID ${orderId} が見つかりません。` }] });
+
+  // ordersテーブルにinspection列があるか確認して更新
+  try {
+    db.prepare("UPDATE orders SET status='inspected', inspection_status='OK', inspected_at=datetime('now','localtime') WHERE id=?").run(Number(orderId));
+  } catch(e) {
+    db.prepare("UPDATE orders SET status='inspected' WHERE id=?").run(Number(orderId));
+  }
+
+  // 入庫処理
+  const product = db.prepare('SELECT * FROM products WHERE name LIKE ? OR id = ?').get(`%${order.product_name ? order.product_name.split(' ')[0] : ''}%`, order.product_id || 0);
+  let stockMsg = '';
+  if (product) {
+    const newStock = product.stock + order.quantity;
+    db.prepare("UPDATE products SET stock=?, updated_at=datetime('now','localtime') WHERE id=?").run(newStock, product.id);
+    stockMsg = `\n\n📦 入庫完了\n${product.name} ${product.spec}: ${product.stock} + ${order.quantity} = ${newStock}${product.unit}`;
+
+    const sheetsLocal = require('../integrations/sheetsSync');
+    sheetsLocal.runAsync(sheetsLocal.syncInventory, product.id);
+  }
+
+  return client.replyMessage({ replyToken, messages:[{ type:'text',
+    text:`✅ 検収OK\n\n発注ID: ${orderId}\n品名: ${order.product_name}\n数量: ${order.quantity}${stockMsg}`
+  }] });
+}
+
+/** 検収NG: ステータス更新 + 通知 */
+async function handleInspectionNg(client, replyToken, orderId, reason, adminLineId) {
+  const db = getDb();
+  const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(Number(orderId));
+  if (!order) return client.replyMessage({ replyToken, messages:[{ type:'text', text:`発注ID ${orderId} が見つかりません。` }] });
+
+  try {
+    db.prepare("UPDATE orders SET status='inspection_ng', inspection_status='NG', inspected_at=datetime('now','localtime'), inspection_memo=? WHERE id=?")
+      .run(reason||'理由未記載', Number(orderId));
+  } catch(e) {
+    db.prepare("UPDATE orders SET status='inspection_ng' WHERE id=?").run(Number(orderId));
+  }
+
+  if (adminLineId) {
+    try {
+      await client.pushMessage({ to:adminLineId, messages:[{ type:'text',
+        text:`🚨 検収NG通知\n\n発注ID: ${orderId}\n品名: ${order.product_name}\n理由: ${reason||'未記載'}\n仕入先: ${order.supplier_name||'—'}`
+      }] });
+    } catch(e) { console.error('[検収NG通知エラー]', e.message); }
+  }
+
+  return client.replyMessage({ replyToken, messages:[{ type:'text',
+    text:`❌ 検収NG\n\n発注ID: ${orderId}\n品名: ${order.product_name}\n理由: ${reason||'未記載'}\n\n管理者に通知しました。`
+  }] });
+}
+
+module.exports = { handleOrderList, handleCreateOrder, handleApproveOrder, handleRejectOrder, handleStartInspection, handleInspectionOk, handleInspectionNg };
