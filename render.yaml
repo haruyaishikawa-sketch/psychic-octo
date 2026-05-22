@@ -1,0 +1,39 @@
+services:
+  - type: web
+    name: lumber-line-demo
+    env: node
+    buildCommand: npm install
+    startCommand: node src/server.js
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: LINE_CHANNEL_ACCESS_TOKEN
+        sync: false
+      - key: LINE_CHANNEL_SECRET
+        sync: false
+      - key: ADMIN_LINE_USER_ID
+        sync: false
+      - key: SERVER_URL
+        sync: false
+      - key: COMPANY_NAME
+        sync: false
+      - key: COMPANY_ADDRESS
+        sync: false
+      - key: COMPANY_TEL
+        sync: false
+      - key: COMPANY_BANK
+        sync: false
+      - key: GOOGLE_SERVICE_ACCOUNT_EMAIL
+        sync: false
+      - key: GOOGLE_PRIVATE_KEY
+        sync: false
+      - key: GOOGLE_SPREADSHEET_ID
+        sync: false
+      - key: GMAIL_USER
+        sync: false
+      - key: GMAIL_CLIENT_ID
+        sync: false
+      - key: GMAIL_CLIENT_SECRET
+        sync: false
+      - key: GMAIL_REFRESH_TOKEN
+        sync: false

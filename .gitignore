@@ -1,0 +1,27 @@
+# 環境変数（絶対にコミットしない）
+.env
+
+# 依存パッケージ
+node_modules/
+
+# データベース
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# 生成ファイル
+invoices/
+pdfs/
+
+# ログ
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# エディタ
+.vscode/
+.idea/

@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🌲 材木店 LINE管理ダッシュボード</title>
+  <style>
+    :root {
+      --green: #2C7A4B; --green-light: #E8F5EE;
+      --red: #E74C3C;   --red-light: #FDEDEC;
+      --blue: #1565C0;  --blue-light: #EBF5FB;
+      --orange: #E67E22;
+      --brown: #5D4037; --brown-light: #EFEBE9;
+      --teal: #00695C;  --teal-light: #E0F2F1;
+      --gray: #F4F6F7;  --border: #DDE1E4;
+      --text: #2C3E50;  --text-muted: #7F8C8D;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI','Hiragino Kaku Gothic ProN',sans-serif; background: var(--gray); color: var(--text); }
+
+    header {
+      background: var(--green); color: white; padding: 16px 24px;
+      display: flex; align-items: center; gap: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.15);
+    }
+    header h1 { font-size: 20px; font-weight: 700; }
+    header span.sub { font-size: 13px; opacity: .8; }
+
+    /* タブ */
+    .tabs { background: white; border-bottom: 1px solid var(--border); display: flex; gap: 0; overflow-x: auto; }
+    .tab-btn {
+      padding: 12px 20px; border: none; background: none; cursor: pointer;
+      font-size: 14px; color: var(--text-muted); border-bottom: 3px solid transparent;
+      white-space: nowrap; font-weight: 600; transition: all .2s;
+    }
+    .tab-btn.active { color: var(--green); border-bottom-color: var(--green); }
+    .tab-btn:hover { color: var(--green); background: var(--green-light); }
+
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    .container { max-width: 1200px; margin: 0 auto; padding: 24px 16px; }
+
+    /* KPI */
+    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(160px,1fr)); gap: 16px; margin-bottom: 24px; }
+    .kpi-card { background: white; border-radius: 12px; padding: 18px; box-shadow: 0 1px 4px rgba(0,0,0,.08); border-left: 4px solid var(--green); }
+    .kpi-card.alert { border-left-color: var(--red); }
+    .kpi-card.pending { border-left-color: var(--orange); }
+    .kpi-card.unpaid { border-left-color: var(--blue); }
+    .kpi-card.quotes { border-left-color: var(--brown); }
+    .kpi-label { font-size: 11px; color: var(--text-muted); margin-bottom: 6px; }
+    .kpi-value { font-size: 26px; font-weight: 700; }
+    .kpi-card.alert .kpi-value { color: var(--red); }
+    .kpi-card.pending .kpi-value { color: var(--orange); }
+    .kpi-card.unpaid .kpi-value { color: var(--blue); }
+    .kpi-card.quotes .kpi-value { color: var(--brown); }
+
+    /* セクション */
+    .section { background: white; border-radius: 12px; box-shadow: 0 1px 4px rgba(0,0,0,.08); margin-bottom: 24px; overflow: hidden; }
+    .section-header { padding: 14px 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; background: var(--gray); }
+    .section-title { font-size: 15px; font-weight: 700; }
+    .section-body { overflow-x: auto; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th { text-align: left; padding: 10px 16px; background: var(--gray); color: var(--text-muted); font-size: 12px; font-weight: 600; border-bottom: 1px solid var(--border); }
+    td { padding: 11px 16px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: var(--green-light); }
+    tr.stock-alert td { background: var(--red-light); color: var(--red); }
+    tr.stock-alert:hover td { background: #FAD7D3; }
+
+    .badge { display: inline-block; padding: 2px 9px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+    .badge-pending  { background: #FEF9E7; color: #D68910; }
+    .badge-approved { background: #EAFAF1; color: #1E8449; }
+    .badge-rejected { background: var(--red-light); color: #C0392B; }
+    .badge-unpaid   { background: var(--red-light); color: var(--red); }
+    .badge-paid     { background: var(--green-light); color: var(--green); }
+    .badge-alert    { background: var(--red-light); color: var(--red); }
+    .badge-draft    { background: #F3E5F5; color: #7B1FA2; }
+    .badge-sent     { background: var(--blue-light); color: var(--blue); }
+    .badge-accepted { background: var(--green-light); color: var(--green); }
+
+    .btn { padding: 6px 14px; border: none; border-radius: 6px; font-size: 13px; cursor: pointer; font-weight: 600; transition: opacity .2s; }
+    .btn:hover { opacity: .82; }
+    .btn-green { background: var(--green); color: white; }
+    .btn-red   { background: var(--red); color: white; }
+    .btn-blue  { background: var(--blue); color: white; }
+    .btn-brown { background: var(--brown); color: white; }
+    .btn-teal  { background: var(--teal); color: white; }
+    .btn-gray  { background: var(--border); color: var(--text); }
+    .btn-sm    { padding: 4px 10px; font-size: 12px; }
+
+    /* フォーム */
+    .form-area { padding: 20px; }
+    .form-row { display: grid; grid-template-columns: repeat(auto-fill,minmax(200px,1fr)); gap: 12px; align-items: end; }
+    .form-group { display: flex; flex-direction: column; gap: 4px; }
+    .form-group label { font-size: 12px; color: var(--text-muted); font-weight: 600; }
+    .form-group input, .form-group select {
+      padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px;
+      font-size: 14px; font-family: inherit;
+    }
+    .form-group input:focus, .form-group select:focus { outline: none; border-color: var(--green); }
+
+    /* 材積計算 */
+    .calc-result { background: var(--brown-light); border-radius: 8px; padding: 16px; margin-top: 16px; display: none; }
+    .calc-result.show { display: block; }
+    .calc-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 14px; }
+    .calc-row strong { font-size: 18px; color: var(--brown); }
+
+    /* 掛け率スライダー */
+    .rate-badge { display: inline-block; background: var(--brown-light); color: var(--brown); padding: 2px 10px; border-radius: 12px; font-size: 13px; font-weight: 700; }
+
+    #toast { position: fixed; bottom: 24px; right: 24px; background: #2ECC71; color: white; padding: 12px 20px; border-radius: 8px; font-size: 14px; font-weight: 600; box-shadow: 0 4px 12px rgba(0,0,0,.2); opacity: 0; transform: translateY(10px); transition: all .3s; z-index: 1000; }
+    #toast.show { opacity: 1; transform: translateY(0); }
+    #toast.error { background: var(--red); }
+    .loading { text-align: center; padding: 32px; color: var(--text-muted); }
+    .empty-row td { text-align: center; color: var(--text-muted); padding: 24px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <span style="font-size:28px">🌲</span>
+  <div>
+    <h1>材木店 LINE管理ダッシュボード</h1>
+    <span class="sub">在庫・発注・見積・納品・請求の一元管理</span>
+  </div>
+  <button class="btn btn-green" style="margin-left:auto" onclick="loadAll()">🔄 更新</button>
+</header>
+
+<!-- タブ -->
+<div class="tabs">
+  <button class="tab-btn active" onclick="switchTab('tab-home')">🏠 ホーム</button>
+  <button class="tab-btn" onclick="switchTab('tab-inventory')">📦 在庫</button>
+  <button class="tab-btn" onclick="switchTab('tab-orders')">📋 発注</button>
+  <button class="tab-btn" onclick="switchTab('tab-quotes')">📄 見積書</button>
+  <button class="tab-btn" onclick="switchTab('tab-delivery')">🚚 納品書</button>
+  <button class="tab-btn" onclick="switchTab('tab-invoices')">💴 請求書</button>
+  <button class="tab-btn" onclick="switchTab('tab-customers')">👥 顧客・掛け率</button>
+  <button class="tab-btn" onclick="switchTab('tab-calc')">📐 材積計算</button>
+  <button class="tab-btn" onclick="switchTab('tab-stocktake')">📋 棚卸し履歴</button>
+  <button class="tab-btn" onclick="switchTab('tab-line')">📱 LINE送信</button>
+</div>
+
+<!-- ホーム -->
+<div id="tab-home" class="tab-content active">
+<div class="container">
+  <div class="kpi-grid">
+    <div class="kpi-card"><div class="kpi-label">総品目数</div><div class="kpi-value" id="kpi-total">—</div></div>
+    <div class="kpi-card alert"><div class="kpi-label">⚠️ 在庫アラート</div><div class="kpi-value" id="kpi-alert">—</div></div>
+    <div class="kpi-card pending"><div class="kpi-label">📋 承認待ち発注</div><div class="kpi-value" id="kpi-orders">—</div></div>
+    <div class="kpi-card quotes"><div class="kpi-label">📄 見積書（下書き）</div><div class="kpi-value" id="kpi-quotes">—</div></div>
+    <div class="kpi-card unpaid"><div class="kpi-label">💴 未払い合計</div><div class="kpi-value" id="kpi-unpaid">—</div></div>
+  </div>
+
+  <!-- 在庫アラート -->
+  <div class="section">
+    <div class="section-header"><span class="section-title">⚠️ 在庫アラート品目</span></div>
+    <div class="section-body">
+      <table id="alert-table">
+        <thead><tr><th>品名</th><th>規格</th><th>在庫</th><th>発注点</th><th>単価</th></tr></thead>
+        <tbody><tr><td colspan="5" class="loading">読み込み中...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- 承認待ち発注 -->
+  <div class="section">
+    <div class="section-header"><span class="section-title">📋 承認待ち発注</span></div>
+    <div class="section-body">
+      <table id="home-orders-table">
+        <thead><tr><th>#</th><th>品名</th><th>数量</th><th>仕入先</th><th>操作</th></tr></thead>
+        <tbody><tr><td colspan="5" class="loading">読み込み中...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- 在庫 -->
+<div id="tab-inventory" class="tab-content">
+<div class="container">
+  <div class="section">
+    <div class="section-header"><span class="section-title">📦 在庫一覧</span><span style="font-size:12px;color:var(--text-muted)">赤行 = 発注点以下</span></div>
+    <div class="section-body">
+      <table id="products-table">
+        <thead><tr><th>品名</th><th>規格</th><th>在庫数</th><th>発注点</th><th>単価</th><th>単位</th><th>状態</th><th>最終更新</th></tr></thead>
+        <tbody><tr><td colspan="8" class="loading">読み込み中...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- 発注 -->
+<div id="tab-orders" class="tab-content">
+<div class="container">
+  <div class="section">
+    <div class="section-header"><span class="section-title">📋 発注一覧</span></div>
+    <div class="section-body">
+      <table id="orders-table">
+        <thead><tr><th>#</th><th>品名</th><th>数量</th><th>仕入先</th><th>ステータス</th><th>作成日時</th><th>操作</th></tr></thead>
+        <tbody><tr><td colspan="7" class="loading">読み込み中...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- 見積書 -->
+<div id="tab-quotes" class="tab-content">
+<div class="container">
+  <div class="section">
+    <div class="section-header"><span class="section-title">📄 見積書一覧</span><span style="font-size:12px;color:var(--text-muted)">LINEで「見積書 [顧客] [品名] [数量]」で生成</span></div>
+    <div class="section-body">
+      <table id="quotes-table">
+        <thead><tr><th>#</th><th>顧客名</th><th>品目</th><th>掛け率</th><th>合計（税込）</th><th>ステータス</th><th>有効期限</th><th>操作</th></tr></thead>
+        <tbody><tr><td colspan="8" class="loading">読み込み中...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- 納品書 -->
+<div id="tab-delivery" class="tab-content">
+<div class="container">
+  <div class="section">
+    <div class="section-header"><span class="section-title">🚚 納品書一覧</span><span style="font-size:12px;color:var(--text-muted)">LINEで「納品書 [顧客] [品名] [数量]」で生成</span></div>
+    <div class="section-body">
+      <table id="delivery-table">
+        <thead><tr><th>#</th><th>顧客名</th><th>品目</th><th>金額（税抜）</th><th>納品日</th><th>操作</th></tr></thead>
+        <tbody><tr><td colspan="6" class="loading">読み込み中...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- 請求書 -->
+<div id="tab-invoices" class="tab-content">
+<div class="container">
+  <div class="section">
+    <div class="section-header"><span class="section-title">💴 請求書一覧</span></div>
+    <div class="section-body">
+      <table id="invoices-table">
+        <thead><tr><th>請求書番号</th><th>顧客名</th><th>対象月</th><th>小計</th><th>消費税</th><th>合計金額</th><th>支払期限</th><th>ステータス</th><th>操作</th></tr></thead>
+        <tbody><tr><td colspan="9" class="loading">読み込み中...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- 顧客・掛け率 -->
+<div id="tab-customers" class="tab-content">
+<div class="container">
+  <div class="section">
+    <div class="section-header"><span class="section-title">👥 顧客一覧・掛け率設定</span></div>
+    <div class="section-body">
+      <table id="customers-table">
+        <thead><tr><th>会社名</th><th>担当者</th><th>電話</th><th>掛け率</th><th>割引率</th><th>変更</th></tr></thead>
+        <tbody><tr><td colspan="6" class="loading">読み込み中...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- 材積計算 -->
+<div id="tab-calc" class="tab-content">
+<div class="container">
+  <div class="section">
+    <div class="section-header"><span class="section-title">📐 材積計算</span></div>
+    <div class="form-area">
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px">縦・横・長さ(mm)と本数を入力して材積（m³・才）を計算します</p>
+      <div class="form-row">
+        <div class="form-group"><label>縦 (mm)</label><input type="number" id="calc-h" placeholder="105" min="1"></div>
+        <div class="form-group"><label>横 (mm)</label><input type="number" id="calc-w" placeholder="105" min="1"></div>
+        <div class="form-group"><label>長さ (mm)</label><input type="number" id="calc-l" placeholder="3000" min="1"></div>
+        <div class="form-group"><label>本数</label><input type="number" id="calc-n" placeholder="1" min="1" value="1"></div>
+        <div class="form-group"><label>&nbsp;</label><button class="btn btn-brown" onclick="calcVolume()">計算する</button></div>
+      </div>
+
+      <div class="calc-result" id="calc-result">
+        <div style="font-weight:700;margin-bottom:10px;color:var(--brown)">📐 計算結果</div>
+        <div id="calc-input-disp" style="font-size:13px;color:var(--text-muted);margin-bottom:8px"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+          <div>
+            <div style="font-size:12px;color:var(--text-muted)">1本あたり</div>
+            <div class="calc-row"><span>材積</span><span id="c-per-m3">—</span></div>
+            <div class="calc-row"><span>材積（才）</span><span id="c-per-sai">—</span></div>
+          </div>
+          <div>
+            <div style="font-size:12px;color:var(--text-muted)" id="c-count-label">合計</div>
+            <div class="calc-row"><span>合計材積</span><strong id="c-total-m3">—</strong></div>
+            <div class="calc-row"><span>合計（才）</span><strong id="c-total-sai">—</strong></div>
+          </div>
+        </div>
+        <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);font-size:12px;color:var(--text-muted)">
+          参考金額（¥50,000/m³換算）: <span id="c-ref-price" style="font-weight:700;color:var(--brown)">—</span>
+        </div>
+      </div>
+
+      <!-- よく使う規格 -->
+      <div style="margin-top:24px">
+        <div style="font-size:13px;font-weight:700;margin-bottom:10px;color:var(--text-muted)">よく使う規格（クリックで入力）</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px">
+          <button class="btn btn-gray btn-sm" onclick="fillCalc(45,45,3000)">垂木 45×45×3000</button>
+          <button class="btn btn-gray btn-sm" onclick="fillCalc(105,105,3000)">角材 105×105×3000</button>
+          <button class="btn btn-gray btn-sm" onclick="fillCalc(105,105,4000)">角材 105×105×4000</button>
+          <button class="btn btn-gray btn-sm" onclick="fillCalc(120,240,3000)">梁 120×240×3000</button>
+          <button class="btn btn-gray btn-sm" onclick="fillCalc(38,89,3600)">2×4 38×89×3600</button>
+          <button class="btn btn-gray btn-sm" onclick="fillCalc(12,910,1820)">合板 12×910×1820</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- 棚卸し履歴 -->
+<div id="tab-stocktake" class="tab-content">
+<div class="container">
+  <div class="section">
+    <div class="section-header">
+      <span class="section-title">📋 棚卸し調整履歴</span>
+      <button class="btn btn-green btn-sm" onclick="loadAdjustments()">🔄 更新</button>
+    </div>
+    <div style="padding:12px 20px;font-size:13px;color:var(--text-muted);background:var(--green-light);border-bottom:1px solid var(--border)">
+      LINEで「棚卸し開始」→ 実地数量を入力 → 「棚卸し完了」→「反映する」で在庫を更新します。
+    </div>
+    <div class="section-body">
+      <table id="adjustments-table">
+        <thead><tr><th>#</th><th>日時</th><th>品名</th><th>帳簿在庫</th><th>実地在庫</th><th>差異</th></tr></thead>
+        <tbody><tr><td colspan="6" class="loading">読み込み中...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-header"><span class="section-title">📱 棚卸しコマンド（LINEで送信）</span></div>
+    <div class="form-area" style="font-size:14px;line-height:2">
+      <table style="width:100%;border-collapse:collapse">
+        <tr><td style="padding:6px 12px;font-weight:700;width:220px">棚卸し開始</td><td style="padding:6px 12px;color:var(--text-muted)">棚卸しモードを開始。全品目の一覧を表示</td></tr>
+        <tr><td style="padding:6px 12px;font-weight:700">棚卸し [品名] [数量]</td><td style="padding:6px 12px;color:var(--text-muted)">例: 「棚卸し 杉 45」 — 品名キーワードで品目を検索して実地数量を記録</td></tr>
+        <tr><td style="padding:6px 12px;font-weight:700">棚卸し完了</td><td style="padding:6px 12px;color:var(--text-muted)">全品目入力後に送信。差異サマリーを表示</td></tr>
+        <tr><td style="padding:6px 12px;font-weight:700">棚卸し完了 強制</td><td style="padding:6px 12px;color:var(--text-muted)">未入力品目があっても完了して差異確認へ</td></tr>
+        <tr><td style="padding:6px 12px;font-weight:700">棚卸しキャンセル</td><td style="padding:6px 12px;color:var(--text-muted)">棚卸しモードを中断</td></tr>
+        <tr><td style="padding:6px 12px;font-weight:700">棚卸し履歴</td><td style="padding:6px 12px;color:var(--text-muted)">LINEで直近10件の調整履歴を表示</td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- LINE送信 -->
+<div id="tab-line" class="tab-content">
+<div class="container">
+  <div class="section">
+    <div class="section-header"><span class="section-title">📱 LINEテストメッセージ送信</span></div>
+    <div class="form-area">
+      <div class="form-row">
+        <div class="form-group">
+          <label>LINE ユーザーID</label>
+          <input type="text" id="line-user-id" placeholder="Uxxxxxxxxxxxxxxxxx">
+        </div>
+        <div class="form-group">
+          <label>メッセージ（コマンド）</label>
+          <input type="text" id="line-message" value="在庫確認">
+        </div>
+        <div class="form-group"><label>&nbsp;</label><button class="btn btn-green" onclick="sendLineTest()">📤 送信</button></div>
+      </div>
+      <div style="margin-top:16px;font-size:12px;color:var(--text-muted)">よく使うコマンド例:</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">
+        <button class="btn btn-gray btn-sm" onclick="setMsg('在庫確認')">在庫確認</button>
+        <button class="btn btn-gray btn-sm" onclick="setMsg('発注確認')">発注確認</button>
+        <button class="btn btn-gray btn-sm" onclick="setMsg('未払い確認')">未払い確認</button>
+        <button class="btn btn-gray btn-sm" onclick="setMsg('見積書 田中建設 杉板2×4 50枚')">見積書作成</button>
+        <button class="btn btn-gray btn-sm" onclick="setMsg('納品書 田中建設 杉板2×4 30枚')">納品書作成</button>
+        <button class="btn btn-gray btn-sm" onclick="setMsg('材積 105 105 3000 10')">材積計算</button>
+        <button class="btn btn-gray btn-sm" onclick="setMsg('掛け率 田中建設')">掛け率確認</button>
+        <button class="btn btn-gray btn-sm" onclick="setMsg('掛け率 田中建設 0.80')">掛け率変更</button>
+        <button class="btn btn-gray btn-sm" onclick="setMsg('請求書作成 田中建設 杉板 100枚 角材 30本')">請求書（手動）</button>
+        <button class="btn btn-gray btn-sm" onclick="setMsg('入金確認 INV-20241130-001')">入金確認</button>
+        <button class="btn btn-gray btn-sm" onclick="setMsg('棚卸し開始')">棚卸し開始</button>
+      </div>
+      <div style="margin-top:12px;font-size:12px;color:var(--text-muted)">
+        ※ LINE_CHANNEL_ACCESS_TOKEN と ADMIN_LINE_USER_ID が .env に設定されている必要があります
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const API = '/api';
+
+// ── タブ切替 ──────────────────────────────────────────────────────
+function switchTab(id) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  event.target.classList.add('active');
+  // タブに応じてデータ読み込み
+  const loaders = {
+    'tab-inventory':  loadProducts,
+    'tab-orders':     loadOrders,
+    'tab-quotes':     loadQuotes,
+    'tab-delivery':   loadDelivery,
+    'tab-invoices':   loadInvoices,
+    'tab-customers':  loadCustomers,
+    'tab-stocktake':  loadAdjustments,
+  };
+  if (loaders[id]) loaders[id]();
+}
+
+// ── ユーティリティ ───────────────────────────────────────────────
+function showToast(msg, isError = false) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'show' + (isError ? ' error' : '');
+  setTimeout(() => t.className = '', 3000);
+}
+function fmtDate(s) { return s ? s.slice(0, 16).replace('T',' ') : '—'; }
+function fmtMoney(n) { return '¥' + Number(n).toLocaleString(); }
+function labelStatus(s) {
+  return { pending:'承認待ち', approved:'承認済', rejected:'却下', paid:'支払済', unpaid:'未払い', draft:'下書き', sent:'送付済', accepted:'成約', }[s] || s;
+}
+async function api(path, opt) {
+  const r = await fetch(API + path, opt);
+  const j = await r.json();
+  if (!j.success) throw new Error(j.error);
+  return j.data;
+}
+
+// ── KPI ──────────────────────────────────────────────────────────
+async function loadDashboard() {
+  try {
+    const d = await api('/dashboard');
+    document.getElementById('kpi-total').textContent = d.totalProducts;
+    document.getElementById('kpi-alert').textContent = d.alertProducts;
+    document.getElementById('kpi-orders').textContent = d.pendingOrders;
+    document.getElementById('kpi-unpaid').textContent = fmtMoney(d.unpaidAmount);
+    document.getElementById('kpi-quotes').textContent = d.draftQuotes ?? '—';
+  } catch (e) { console.error(e); }
+}
+
+// ── 在庫アラート（ホーム） ────────────────────────────────────────
+async function loadAlertProducts() {
+  const tbody = document.querySelector('#alert-table tbody');
+  try {
+    const products = await api('/products');
+    const alerts = products.filter(p => p.stock <= p.reorder_point);
+    if (!alerts.length) {
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="5">✅ 在庫アラートはありません</td></tr>';
+      return;
+    }
+    tbody.innerHTML = alerts.map(p => `
+      <tr class="stock-alert">
+        <td><strong>${p.name}</strong></td><td>${p.spec}</td>
+        <td><strong>${p.stock}${p.unit}</strong> / 発注点 ${p.reorder_point}${p.unit}</td>
+        <td>${p.reorder_point}${p.unit}</td>
+        <td>${fmtMoney(p.unit_price)}</td>
+      </tr>`).join('');
+  } catch(e) { tbody.innerHTML = `<tr class="empty-row"><td colspan="5">エラー: ${e.message}</td></tr>`; }
+}
+
+// ── 在庫テーブル ─────────────────────────────────────────────────
+async function loadProducts() {
+  const tbody = document.querySelector('#products-table tbody');
+  try {
+    const products = await api('/products');
+    if (!products.length) { tbody.innerHTML='<tr class="empty-row"><td colspan="8">データなし</td></tr>'; return; }
+    tbody.innerHTML = products.map(p => {
+      const alert = p.stock <= p.reorder_point;
+      return `<tr class="${alert?'stock-alert':''}">
+        <td><strong>${p.name}</strong></td><td>${p.spec}</td>
+        <td><strong>${p.stock}</strong></td><td>${p.reorder_point}</td>
+        <td>${fmtMoney(p.unit_price)}</td><td>${p.unit}</td>
+        <td>${alert?'<span class="badge badge-alert">⚠️ 要発注</span>':'<span style="color:var(--green)">✅ 適正</span>'}</td>
+        <td style="font-size:12px;color:var(--text-muted)">${fmtDate(p.updated_at)}</td>
+      </tr>`;
+    }).join('');
+  } catch(e) { tbody.innerHTML=`<tr class="empty-row"><td colspan="8">エラー: ${e.message}</td></tr>`; }
+}
+
+// ── 発注（ホーム） ────────────────────────────────────────────────
+async function loadHomeOrders() {
+  const tbody = document.querySelector('#home-orders-table tbody');
+  try {
+    const orders = await api('/orders?status=pending');
+    if (!orders.length) { tbody.innerHTML='<tr class="empty-row"><td colspan="5">✅ 承認待ちなし</td></tr>'; return; }
+    tbody.innerHTML = orders.map(o => `<tr>
+      <td>#${o.id}</td><td><strong>${o.product_name}</strong></td><td>${o.quantity}</td>
+      <td>${o.supplier_name||'未定'}</td>
+      <td>
+        <button class="btn btn-green btn-sm" onclick="updateOrderStatus(${o.id},'approved')">✅ 承認</button>
+        <button class="btn btn-red btn-sm" onclick="updateOrderStatus(${o.id},'rejected')">❌ 却下</button>
+      </td>
+    </tr>`).join('');
+  } catch(e) { tbody.innerHTML=`<tr class="empty-row"><td colspan="5">エラー: ${e.message}</td></tr>`; }
+}
+
+// ── 発注テーブル ─────────────────────────────────────────────────
+async function loadOrders() {
+  const tbody = document.querySelector('#orders-table tbody');
+  try {
+    const orders = await api('/orders');
+    if (!orders.length) { tbody.innerHTML='<tr class="empty-row"><td colspan="7">データなし</td></tr>'; return; }
+    tbody.innerHTML = orders.map(o => `<tr>
+      <td>#${o.id}</td><td><strong>${o.product_name}</strong></td><td>${o.quantity}</td>
+      <td>${o.supplier_name||'未定'}</td>
+      <td><span class="badge badge-${o.status}">${labelStatus(o.status)}</span></td>
+      <td style="font-size:12px;color:var(--text-muted)">${fmtDate(o.created_at)}</td>
+      <td>${o.status==='pending'?`
+        <button class="btn btn-green btn-sm" onclick="updateOrderStatus(${o.id},'approved')">✅ 承認</button>
+        <button class="btn btn-red btn-sm" onclick="updateOrderStatus(${o.id},'rejected')">❌ 却下</button>`:
+        '<span style="font-size:12px;color:var(--text-muted)">処理済</span>'
+      }</td>
+    </tr>`).join('');
+  } catch(e) { tbody.innerHTML=`<tr class="empty-row"><td colspan="7">エラー: ${e.message}</td></tr>`; }
+}
+
+async function updateOrderStatus(id, status) {
+  try {
+    await api(`/orders/${id}/status`, { method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify({status}) });
+    showToast(`発注 #${id} を ${labelStatus(status)} にしました`);
+    loadHomeOrders(); loadOrders(); loadDashboard();
+  } catch(e) { showToast(e.message, true); }
+}
+
+// ── 見積書テーブル ───────────────────────────────────────────────
+async function loadQuotes() {
+  const tbody = document.querySelector('#quotes-table tbody');
+  try {
+    const quotes = await api('/quotes');
+    if (!quotes.length) { tbody.innerHTML='<tr class="empty-row"><td colspan="8">見積書はありません<br>LINEで「見積書 田中建設 杉板2×4 50枚」と送信して生成できます</td></tr>'; return; }
+    tbody.innerHTML = quotes.map(q => {
+      const items = JSON.parse(q.items);
+      const itemSummary = items.map(i=>`${i.product_name}×${i.quantity}`).join(', ');
+      const discPct = Math.round((1-q.discount_rate)*100);
+      return `<tr>
+        <td>#${q.id}</td><td><strong>${q.customer_name}</strong></td>
+        <td style="font-size:12px">${itemSummary}</td>
+        <td><span class="rate-badge">${q.discount_rate} (${discPct}%引)</span></td>
+        <td><strong>${fmtMoney(q.grand_total)}</strong></td>
+        <td><span class="badge badge-${q.status}">${labelStatus(q.status)}</span></td>
+        <td style="font-size:12px">${q.valid_until||'—'}</td>
+        <td>
+          ${q.pdf_path?`<a href="${API}/quotes/${q.id}/pdf" target="_blank"><button class="btn btn-blue btn-sm">📄 PDF</button></a> `:''}
+          ${q.status==='draft'?`<button class="btn btn-teal btn-sm" onclick="updateQuoteStatus(${q.id},'sent')">送付済に</button>`:''}
+        </td>
+      </tr>`;
+    }).join('');
+  } catch(e) { tbody.innerHTML=`<tr class="empty-row"><td colspan="8">エラー: ${e.message}</td></tr>`; }
+}
+
+async function updateQuoteStatus(id, status) {
+  try {
+    await api(`/quotes/${id}/status`, { method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify({status}) });
+    showToast(`見積書 #${id} を「${labelStatus(status)}」にしました`);
+    loadQuotes();
+  } catch(e) { showToast(e.message, true); }
+}
+
+// ── 納品書テーブル ───────────────────────────────────────────────
+async function loadDelivery() {
+  const tbody = document.querySelector('#delivery-table tbody');
+  try {
+    const notes = await api('/delivery-notes');
+    if (!notes.length) { tbody.innerHTML='<tr class="empty-row"><td colspan="6">納品書はありません<br>LINEで「納品書 田中建設 杉板2×4 30枚」と送信して生成できます</td></tr>'; return; }
+    tbody.innerHTML = notes.map(n => {
+      const items = JSON.parse(n.items);
+      const summary = items.map(i=>`${i.product_name}×${i.quantity}`).join(', ');
+      return `<tr>
+        <td>#${n.id}</td><td><strong>${n.customer_name}</strong></td>
+        <td style="font-size:12px">${summary}</td>
+        <td><strong>${fmtMoney(n.total_amount)}</strong></td>
+        <td style="font-size:12px">${n.delivered_at||'—'}</td>
+        <td>${n.pdf_path?`<a href="${API}/delivery-notes/${n.id}/pdf" target="_blank"><button class="btn btn-teal btn-sm">📄 PDF</button></a>`:'—'}</td>
+      </tr>`;
+    }).join('');
+  } catch(e) { tbody.innerHTML=`<tr class="empty-row"><td colspan="6">エラー: ${e.message}</td></tr>`; }
+}
+
+// ── 請求書テーブル ───────────────────────────────────────────────
+async function loadInvoices() {
+  const tbody = document.querySelector('#invoices-table tbody');
+  try {
+    const invoices = await api('/invoices');
+    if (!invoices.length) { tbody.innerHTML='<tr class="empty-row"><td colspan="9">データなし</td></tr>'; return; }
+    tbody.innerHTML = invoices.map(inv => `<tr>
+      <td style="font-size:12px;font-weight:700">${inv.invoice_number||'—'}</td>
+      <td><strong>${inv.customer_name}</strong></td>
+      <td>${inv.billing_month}</td>
+      <td style="font-size:12px">${fmtMoney(inv.subtotal||0)}</td>
+      <td style="font-size:12px">${fmtMoney(inv.tax_amount||0)}</td>
+      <td><strong>${fmtMoney(inv.total_amount)}</strong></td>
+      <td style="font-size:12px;color:var(--red)">${inv.due_date||'—'}</td>
+      <td><span class="badge badge-${inv.status}">${labelStatus(inv.status)}</span></td>
+      <td>
+        ${inv.pdf_path?`<a href="${API}/invoices/${inv.id}/pdf" target="_blank"><button class="btn btn-gray btn-sm">📄 PDF</button></a> `:''}
+        ${inv.status==='unpaid'?`<button class="btn btn-blue btn-sm" onclick="markInvoicePaid(${inv.id})">💴 入金済に</button>`:''}
+      </td>
+    </tr>`).join('');
+  } catch(e) { tbody.innerHTML=`<tr class="empty-row"><td colspan="9">エラー: ${e.message}</td></tr>`; }
+}
+
+async function markInvoicePaid(id) {
+  if (!confirm(`請求書 #${id} を「支払済」にしますか？`)) return;
+  try {
+    await api(`/invoices/${id}/status`, { method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify({status:'paid'}) });
+    showToast(`請求書 #${id} を支払済にしました`);
+    loadInvoices(); loadDashboard();
+  } catch(e) { showToast(e.message, true); }
+}
+
+// ── 顧客・掛け率 ─────────────────────────────────────────────────
+async function loadCustomers() {
+  const tbody = document.querySelector('#customers-table tbody');
+  try {
+    const customers = await api('/customers');
+    if (!customers.length) { tbody.innerHTML='<tr class="empty-row"><td colspan="6">データなし</td></tr>'; return; }
+    tbody.innerHTML = customers.map(c => {
+      const discPct = Math.round((1-c.discount_rate)*100);
+      return `<tr>
+        <td><strong>${c.company_name}</strong></td>
+        <td>${c.contact_person||'—'}</td>
+        <td>${c.phone||'—'}</td>
+        <td><span class="rate-badge">${c.discount_rate}</span></td>
+        <td style="color:var(--brown)">${discPct}% 引き</td>
+        <td>
+          <input type="number" id="rate-${c.id}" value="${c.discount_rate}" min="0.01" max="1" step="0.01"
+            style="width:70px;padding:4px 8px;border:1px solid var(--border);border-radius:4px;font-size:13px">
+          <button class="btn btn-brown btn-sm" onclick="updateDiscountRate(${c.id})">更新</button>
+        </td>
+      </tr>`;
+    }).join('');
+  } catch(e) { tbody.innerHTML=`<tr class="empty-row"><td colspan="6">エラー: ${e.message}</td></tr>`; }
+}
+
+async function updateDiscountRate(id) {
+  const val = parseFloat(document.getElementById(`rate-${id}`).value);
+  if (isNaN(val)||val<=0||val>1) { showToast('掛け率は 0.01〜1.00 で入力してください', true); return; }
+  try {
+    await api(`/customers/${id}/discount-rate`, { method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify({discount_rate:val}) });
+    showToast('掛け率を更新しました');
+    loadCustomers();
+  } catch(e) { showToast(e.message, true); }
+}
+
+// ── 材積計算 ─────────────────────────────────────────────────────
+const SAI_MM3 = 30.303 * 30.303 * 3636.36;
+const M3_MM3  = 1e9;
+
+function fillCalc(h, w, l) {
+  document.getElementById('calc-h').value = h;
+  document.getElementById('calc-w').value = w;
+  document.getElementById('calc-l').value = l;
+  calcVolume();
+}
+
+function calcVolume() {
+  const h = parseFloat(document.getElementById('calc-h').value);
+  const w = parseFloat(document.getElementById('calc-w').value);
+  const l = parseFloat(document.getElementById('calc-l').value);
+  const n = parseInt(document.getElementById('calc-n').value) || 1;
+
+  if (!h||!w||!l||h<=0||w<=0||l<=0) { showToast('縦・横・長さを正しく入力してください', true); return; }
+
+  const volMM3   = h * w * l;
+  const perM3    = volMM3 / M3_MM3;
+  const perSai   = volMM3 / SAI_MM3;
+  const totalM3  = perM3 * n;
+  const totalSai = perSai * n;
+  const refPrice = Math.round(totalM3 * 50000);
+
+  document.getElementById('calc-input-disp').textContent = `入力: ${h} × ${w} × ${l} mm  ×  ${n}本`;
+  document.getElementById('c-per-m3').textContent  = perM3.toFixed(5) + ' m³';
+  document.getElementById('c-per-sai').textContent = perSai.toFixed(3) + ' 才';
+  document.getElementById('c-count-label').textContent = `合計（${n}本）`;
+  document.getElementById('c-total-m3').textContent  = totalM3.toFixed(4) + ' m³';
+  document.getElementById('c-total-sai').textContent = totalSai.toFixed(2) + ' 才';
+  document.getElementById('c-ref-price').textContent = '¥' + refPrice.toLocaleString();
+  document.getElementById('calc-result').classList.add('show');
+}
+
+// ── 棚卸し履歴テーブル ────────────────────────────────────────────
+async function loadAdjustments() {
+  const tbody = document.querySelector('#adjustments-table tbody');
+  try {
+    const rows = await api('/adjustments');
+    if (!rows.length) {
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="6">棚卸し履歴はありません<br>LINEで「棚卸し開始」と送信して棚卸しを行ってください</td></tr>';
+      return;
+    }
+    tbody.innerHTML = rows.map(r => {
+      const diff = Number(r.diff);
+      const diffColor = diff === 0 ? 'var(--green)' : (diff > 0 ? 'var(--blue)' : 'var(--red)');
+      const diffStr = diff === 0 ? '±0' : (diff > 0 ? `+${diff}` : String(diff));
+      return `<tr>
+        <td>#${r.id}</td>
+        <td style="font-size:12px">${r.adjusted_at.slice(0,16)}</td>
+        <td><strong>${r.product_name}</strong></td>
+        <td>${r.system_stock}</td>
+        <td>${r.actual_stock}</td>
+        <td style="font-weight:700;color:${diffColor}">${diffStr}</td>
+      </tr>`;
+    }).join('');
+  } catch(e) { tbody.innerHTML = `<tr class="empty-row"><td colspan="6">エラー: ${e.message}</td></tr>`; }
+}
+
+// ── LINE 送信 ────────────────────────────────────────────────────
+async function sendLineTest() {
+  const userId  = document.getElementById('line-user-id').value.trim();
+  const message = document.getElementById('line-message').value.trim();
+  if (!userId)  { showToast('LINE ユーザーIDを入力してください', true); return; }
+  if (!message) { showToast('メッセージを入力してください', true); return; }
+  try {
+    await api('/line/test-push', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({userId, message}) });
+    showToast('✅ LINEにメッセージを送信しました！');
+  } catch(e) { showToast('送信失敗: ' + e.message, true); }
+}
+function setMsg(msg) { document.getElementById('line-message').value = msg; }
+
+// ── ダッシュボード集計（見積書件数追加） ──────────────────────────
+async function loadDashboardFull() {
+  try {
+    const [dash, quotes] = await Promise.all([api('/dashboard'), api('/quotes?status=draft')]);
+    document.getElementById('kpi-total').textContent  = dash.totalProducts;
+    document.getElementById('kpi-alert').textContent  = dash.alertProducts;
+    document.getElementById('kpi-orders').textContent = dash.pendingOrders;
+    document.getElementById('kpi-unpaid').textContent = fmtMoney(dash.unpaidAmount);
+    document.getElementById('kpi-quotes').textContent = quotes.length;
+  } catch(e) { console.error(e); }
+}
+
+function loadAll() {
+  loadDashboardFull();
+  loadAlertProducts();
+  loadHomeOrders();
+}
+
+loadAll();
+setInterval(loadAll, 30000);
+</script>
+</body>
+</html>
