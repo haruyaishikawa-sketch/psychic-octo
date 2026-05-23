@@ -136,6 +136,54 @@ router.patch('/orders/:id/status', (req, res) => {
   }
 });
 
+// 承認取消
+router.put('/orders/:id/unapprove', (req, res) => {
+  try {
+    const db = getDb();
+    const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(req.params.id);
+    if (!order) return res.status(404).json({ success: false, error: '発注が見つかりません' });
+    if (order.status !== 'approved') {
+      return res.status(400).json({ success: false, error: '承認済みの発注のみ取り消せます' });
+    }
+
+    // 発注書PDFを削除
+    if (order.purchase_order_path && fs.existsSync(order.purchase_order_path)) {
+      try { fs.unlinkSync(order.purchase_order_path); } catch (_) {}
+    }
+
+    db.prepare(`UPDATE orders SET status = 'pending',
+      purchase_order_path = NULL, email_sent = 0, email_sent_at = NULL,
+      updated_at = datetime('now','localtime') WHERE id = ?`).run(order.id);
+
+    res.json({ success: true, data: { id: order.id, status: 'pending' } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// デモリセット（全発注を未承認に戻す）
+router.post('/orders/demo-reset', (req, res) => {
+  try {
+    const db = getDb();
+    const orders = db.prepare("SELECT * FROM orders WHERE status = 'approved'").all();
+
+    // 各発注書PDFを削除
+    for (const o of orders) {
+      if (o.purchase_order_path && fs.existsSync(o.purchase_order_path)) {
+        try { fs.unlinkSync(o.purchase_order_path); } catch (_) {}
+      }
+    }
+
+    db.prepare(`UPDATE orders SET status = 'pending',
+      purchase_order_path = NULL, email_sent = 0, email_sent_at = NULL,
+      updated_at = datetime('now','localtime') WHERE status = 'approved'`).run();
+
+    res.json({ success: true, message: `${orders.length}件の発注を未承認に戻しました` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // ─── 請求書 ────────────────────────────────────────────────────────
 
 router.get('/invoices', (req, res) => {

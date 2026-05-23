@@ -198,7 +198,10 @@
 <div id="tab-orders" class="tab-content">
 <div class="container">
   <div class="section">
-    <div class="section-header"><span class="section-title">📋 発注一覧</span></div>
+    <div class="section-header">
+      <span class="section-title">📋 発注一覧</span>
+      <button class="btn btn-sm" style="background:#FEF3C7;color:#D97706;border:1px solid #FCD34D" onclick="demoResetOrders()">🔄 デモリセット</button>
+    </div>
     <div class="section-body">
       <table id="orders-table">
         <thead><tr><th>#</th><th>品名</th><th>数量</th><th>仕入先</th><th>ステータス</th><th>作成日時</th><th>発注書PDF</th><th>メール</th><th>操作</th></tr></thead>
@@ -600,6 +603,8 @@ async function loadOrders() {
         <td>${o.status==='pending'?`
           <button class="btn btn-green btn-sm" onclick="updateOrderStatus(${o.id},'approved')">✅ 承認</button>
           <button class="btn btn-red btn-sm" onclick="updateOrderStatus(${o.id},'rejected')">❌ 却下</button>`:
+          o.status==='approved'?`
+          <button class="btn btn-sm" style="background:#FEF3C7;color:#D97706;border:1px solid #FCD34D" onclick="unapproveOrder(${o.id},'#${o.id} ${o.product_name}')">⚠️ 承認取消</button>`:
           '<span style="font-size:12px;color:var(--text-muted)">処理済</span>'
         }</td>
       </tr>`;
@@ -613,6 +618,26 @@ async function updateOrderStatus(id, status) {
     showToast(`発注 #${id} を ${labelStatus(status)} にしました`);
     loadHomeOrders(); loadOrders(); loadDashboard();
   } catch(e) { showToast(e.message, true); }
+}
+
+async function unapproveOrder(id, label) {
+  if (!confirm(`${label} の承認を取り消しますか？\n（発注書PDFも削除されます）`)) return;
+  try {
+    await api(`/orders/${id}/unapprove`, { method:'PUT' });
+    showToast(`発注 #${id} を未承認に戻しました`);
+    loadHomeOrders(); loadOrders(); loadDashboard();
+  } catch(e) { showToast('承認取消失敗: ' + e.message, true); }
+}
+
+async function demoResetOrders() {
+  if (!confirm('全ての承認済み発注を未承認に戻します。よろしいですか？')) return;
+  try {
+    const r = await fetch(API + '/orders/demo-reset', { method:'POST' });
+    const j = await r.json();
+    if (!j.success) throw new Error(j.error);
+    showToast(j.message);
+    loadHomeOrders(); loadOrders(); loadDashboard();
+  } catch(e) { showToast('リセット失敗: ' + e.message, true); }
 }
 
 async function resendPurchaseOrderEmail(id) {
