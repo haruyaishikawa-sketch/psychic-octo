@@ -23,6 +23,26 @@ function getDb() {
 function initSchema() {
   const schema = fs.readFileSync(SCHEMA_PATH, 'utf8');
   db.exec(schema);
+
+  // suppliersテーブルにemail/contact_person/telカラムを追加（既存の場合は無視）
+  const supplierAlters = [
+    "ALTER TABLE suppliers ADD COLUMN email TEXT",
+    "ALTER TABLE suppliers ADD COLUMN contact_person TEXT",
+    "ALTER TABLE suppliers ADD COLUMN tel TEXT",
+  ];
+  for (const sql of supplierAlters) {
+    try { db.exec(sql); } catch (_) { /* already exists */ }
+  }
+
+  // ordersテーブルにpurchase_order_path/email_sent/email_sent_atカラムを追加
+  const orderAlters = [
+    "ALTER TABLE orders ADD COLUMN purchase_order_path TEXT",
+    "ALTER TABLE orders ADD COLUMN email_sent INTEGER DEFAULT 0",
+    "ALTER TABLE orders ADD COLUMN email_sent_at TEXT",
+  ];
+  for (const sql of orderAlters) {
+    try { db.exec(sql); } catch (_) { /* already exists */ }
+  }
 }
 
 function seedData() {
@@ -133,6 +153,13 @@ function seedNewTables() {
   if (!yamada) {
     db.prepare("INSERT INTO customers (company_name, discount_rate) VALUES ('山田建設', 0.85)").run();
   }
+
+  // 山田製材所にemail/contact_person/telを設定（未設定の場合のみ）
+  try {
+    db.prepare(
+      "UPDATE suppliers SET email='yamada-seizaisho@example.com', contact_person='山田太郎', tel='03-1234-5678' WHERE company_name LIKE '%山田%' AND (email IS NULL OR email = '')"
+    ).run();
+  } catch (_) { /* カラム未存在の場合は無視 */ }
 }
 
 module.exports = { getDb };

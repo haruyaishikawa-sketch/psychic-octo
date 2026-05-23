@@ -12,6 +12,7 @@ node_modules/
 
 # 生成ファイル
 invoices/
+purchase_orders/
 pdfs/
 shipments/
 

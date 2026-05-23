@@ -201,8 +201,8 @@
     <div class="section-header"><span class="section-title">📋 発注一覧</span></div>
     <div class="section-body">
       <table id="orders-table">
-        <thead><tr><th>#</th><th>品名</th><th>数量</th><th>仕入先</th><th>ステータス</th><th>作成日時</th><th>操作</th></tr></thead>
-        <tbody><tr><td colspan="7" class="loading">読み込み中...</td></tr></tbody>
+        <thead><tr><th>#</th><th>品名</th><th>数量</th><th>仕入先</th><th>ステータス</th><th>作成日時</th><th>発注書PDF</th><th>メール</th><th>操作</th></tr></thead>
+        <tbody><tr><td colspan="9" class="loading">読み込み中...</td></tr></tbody>
       </table>
     </div>
   </div>
@@ -572,19 +572,39 @@ async function loadOrders() {
   const tbody = document.querySelector('#orders-table tbody');
   try {
     const orders = await api('/orders');
-    if (!orders.length) { tbody.innerHTML='<tr class="empty-row"><td colspan="7">データなし</td></tr>'; return; }
-    tbody.innerHTML = orders.map(o => `<tr>
-      <td>#${o.id}</td><td><strong>${o.product_name}</strong></td><td>${o.quantity}</td>
-      <td>${o.supplier_name||'未定'}</td>
-      <td><span class="badge badge-${o.status}">${labelStatus(o.status)}</span></td>
-      <td style="font-size:12px;color:var(--text-muted)">${fmtDate(o.created_at)}</td>
-      <td>${o.status==='pending'?`
-        <button class="btn btn-green btn-sm" onclick="updateOrderStatus(${o.id},'approved')">✅ 承認</button>
-        <button class="btn btn-red btn-sm" onclick="updateOrderStatus(${o.id},'rejected')">❌ 却下</button>`:
-        '<span style="font-size:12px;color:var(--text-muted)">処理済</span>'
-      }</td>
-    </tr>`).join('');
-  } catch(e) { tbody.innerHTML=`<tr class="empty-row"><td colspan="7">エラー: ${e.message}</td></tr>`; }
+    if (!orders.length) { tbody.innerHTML='<tr class="empty-row"><td colspan="9">データなし</td></tr>'; return; }
+    tbody.innerHTML = orders.map(o => {
+      // 発注書PDFボタン
+      const pdfCell = o.purchase_order_path
+        ? `<a href="${API}/orders/${o.id}/purchase-order/pdf" target="_blank"><button class="btn btn-blue btn-sm">📄 PDF</button></a>`
+        : '<span style="font-size:12px;color:var(--text-muted)">—</span>';
+
+      // メール列
+      let emailCell;
+      if (o.email_sent) {
+        emailCell = `<span class="badge" style="background:#d1fae5;color:#065f46;font-size:11px">✅ 送信済</span>`;
+        if (o.email_sent_at) emailCell += `<br><span style="font-size:10px;color:var(--text-muted)">${fmtDate(o.email_sent_at)}</span>`;
+      } else if (o.status === 'approved' && o.purchase_order_path) {
+        emailCell = `<button class="btn btn-sm" style="background:#dbeafe;color:#1d4ed8;font-size:12px" onclick="resendPurchaseOrderEmail(${o.id})">📧 再送</button>`;
+      } else {
+        emailCell = '<span style="font-size:12px;color:var(--text-muted)">未送信</span>';
+      }
+
+      return `<tr>
+        <td>#${o.id}</td><td><strong>${o.product_name}</strong></td><td>${o.quantity}</td>
+        <td>${o.supplier_name||'未定'}</td>
+        <td><span class="badge badge-${o.status}">${labelStatus(o.status)}</span></td>
+        <td style="font-size:12px;color:var(--text-muted)">${fmtDate(o.created_at)}</td>
+        <td>${pdfCell}</td>
+        <td>${emailCell}</td>
+        <td>${o.status==='pending'?`
+          <button class="btn btn-green btn-sm" onclick="updateOrderStatus(${o.id},'approved')">✅ 承認</button>
+          <button class="btn btn-red btn-sm" onclick="updateOrderStatus(${o.id},'rejected')">❌ 却下</button>`:
+          '<span style="font-size:12px;color:var(--text-muted)">処理済</span>'
+        }</td>
+      </tr>`;
+    }).join('');
+  } catch(e) { tbody.innerHTML=`<tr class="empty-row"><td colspan="9">エラー: ${e.message}</td></tr>`; }
 }
 
 async function updateOrderStatus(id, status) {
@@ -593,6 +613,14 @@ async function updateOrderStatus(id, status) {
     showToast(`発注 #${id} を ${labelStatus(status)} にしました`);
     loadHomeOrders(); loadOrders(); loadDashboard();
   } catch(e) { showToast(e.message, true); }
+}
+
+async function resendPurchaseOrderEmail(id) {
+  try {
+    const result = await api(`/orders/${id}/purchase-order/resend`, { method:'POST' });
+    showToast(`発注書メールを再送しました: ${result.poNumber || ''}`);
+    loadOrders();
+  } catch(e) { showToast('再送失敗: ' + e.message, true); }
 }
 
 // ── 見積書テーブル ───────────────────────────────────────────────

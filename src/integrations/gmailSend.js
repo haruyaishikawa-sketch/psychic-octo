@@ -298,6 +298,73 @@ async function sendMonthlyReportEmail() {
   return result;
 }
 
+/**
+ * 発注書PDFを仕入先にメール送信
+ * @param {number|string} supplierId
+ * @param {object} orderData - orders テーブルのレコード
+ * @param {string} pdfPath   - 発注書PDFの絶対パス
+ * @returns {boolean} 送信成功なら true、メール未設定なら false
+ */
+async function sendPurchaseOrderEmail(supplierId, orderData, pdfPath) {
+  const db       = getDb();
+  const supplier = db.prepare('SELECT * FROM suppliers WHERE id = ?').get(Number(supplierId));
+  if (!supplier)       { console.warn('[Gmail] 仕入先が見つかりません:', supplierId); return false; }
+  if (!supplier.email) { console.warn('[Gmail] 仕入先メール未登録:', supplier.company_name); return false; }
+
+  const companyName = process.env.COMPANY_NAME || '材木店';
+
+  // 発注書番号をPDFパスから抽出（例: PO-20260523-001.pdf → PO-20260523-001）
+  const poNumber = path.basename(pdfPath, '.pdf');
+
+  const unit    = orderData.unit || '';
+  const subject = `【発注書】${poNumber} ${orderData.product_name} ${orderData.quantity}${unit}`;
+
+  // 納品希望日（発注日 +7日）
+  const delDate = new Date();
+  delDate.setDate(delDate.getDate() + 7);
+  const delDateStr = `${delDate.getFullYear()}年${delDate.getMonth() + 1}月${delDate.getDate()}日`;
+
+  const contactPerson = supplier.contact_person || `${supplier.company_name} ご担当者`;
+
+  const html = `
+<!DOCTYPE html><html lang="ja"><body style="font-family:sans-serif;color:#333;max-width:600px;margin:0 auto">
+<h2 style="color:#1D4ED8;border-bottom:2px solid #1D4ED8;padding-bottom:8px">発注書送付のお知らせ</h2>
+<p>${contactPerson}様</p>
+<p>いつもお世話になっております。<br>
+下記の通り発注書をお送りいたします。</p>
+<table style="border-collapse:collapse;width:100%;margin:16px 0">
+  <tr style="background:#EBF5FB">
+    <td style="padding:8px 12px;border:1px solid #ccc;font-weight:bold;width:130px">発注書番号</td>
+    <td style="padding:8px 12px;border:1px solid #ccc">${poNumber}</td>
+  </tr>
+  <tr>
+    <td style="padding:8px 12px;border:1px solid #ccc;font-weight:bold">品目</td>
+    <td style="padding:8px 12px;border:1px solid #ccc">${orderData.product_name}</td>
+  </tr>
+  <tr style="background:#EBF5FB">
+    <td style="padding:8px 12px;border:1px solid #ccc;font-weight:bold">数量</td>
+    <td style="padding:8px 12px;border:1px solid #ccc">${orderData.quantity}${unit}</td>
+  </tr>
+  <tr>
+    <td style="padding:8px 12px;border:1px solid #ccc;font-weight:bold">納品希望日</td>
+    <td style="padding:8px 12px;border:1px solid #ccc;color:#DC2626;font-weight:bold">${delDateStr}</td>
+  </tr>
+</table>
+<p>添付の発注書PDFをご確認いただき、受領の旨をお知らせいただけますと幸いです。<br>
+ご不明な点はお気軽にお問い合わせください。</p>
+<hr style="border:none;border-top:1px solid #eee;margin:24px 0">
+<p style="color:#888;font-size:0.85em">${companyName}<br>
+${process.env.COMPANY_ADDRESS || ''}<br>
+TEL: ${process.env.COMPANY_TEL || ''}</p>
+</body></html>`;
+
+  const attachments = fs.existsSync(pdfPath)
+    ? [{ filename: path.basename(pdfPath), path: pdfPath, contentType: 'application/pdf' }]
+    : [];
+
+  return sendMail({ to: supplier.email, subject, html, attachments });
+}
+
 // ────────────────────────────────────────────────────────────────
 // ヘルパー: バックグラウンド実行
 // ────────────────────────────────────────────────────────────────
@@ -313,6 +380,7 @@ module.exports = {
   initGmail,
   sendInvoiceEmail,
   sendOrderConfirmEmail,
+  sendPurchaseOrderEmail,
   sendStockAlertEmail,
   sendMonthlyReportEmail,
   runAsync,

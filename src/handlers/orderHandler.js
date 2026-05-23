@@ -7,6 +7,7 @@ const {
 } = require('../line/flexMessages');
 const sheets = require('../integrations/sheetsSync');
 const gmail  = require('../integrations/gmailSend');
+const { generatePurchaseOrderPdf } = require('./purchaseOrderHandler');
 
 // 未承認の発注一覧
 async function handleOrderList(client, replyToken) {
@@ -96,14 +97,57 @@ async function handleApproveOrder(client, replyToken, orderId) {
   db.prepare("UPDATE orders SET status = 'approved', updated_at = datetime('now','localtime') WHERE id = ?").run(orderId);
   sheets.runAsync(sheets.updateOrderStatus, orderId, 'approved');
 
+  // 仕入先情報を取得
+  const supplier = order.supplier_id
+    ? db.prepare('SELECT * FROM suppliers WHERE id = ?').get(Number(order.supplier_id))
+    : null;
+
+  // 発注書PDF生成 & メール送信
+  let replyText;
+  try {
+    const { pdfPath, poNumber, deliveryDateObj } = await generatePurchaseOrderPdf(order, supplier || {
+      company_name: order.supplier_name || '未定',
+    });
+
+    // PDFパスをDBに保存
+    try {
+      db.prepare(
+        "UPDATE orders SET purchase_order_path = ?, updated_at = datetime('now','localtime') WHERE id = ?"
+      ).run(pdfPath, orderId);
+    } catch (_) { /* purchase_order_path カラム未存在の場合は無視 */ }
+
+    const unit         = order.unit || '';
+    const supplierName = (supplier && supplier.company_name) || order.supplier_name || '未定';
+    const delStr       = `${deliveryDateObj.getFullYear()}/${String(deliveryDateObj.getMonth() + 1).padStart(2, '0')}/${String(deliveryDateObj.getDate()).padStart(2, '0')}`;
+
+    if (supplier && supplier.email) {
+      // メール送信を試みる
+      const emailSent = await gmail.sendPurchaseOrderEmail(order.supplier_id, order, pdfPath);
+
+      if (emailSent) {
+        // メール送信フラグを保存
+        try {
+          db.prepare(
+            "UPDATE orders SET email_sent = 1, email_sent_at = datetime('now','localtime'), updated_at = datetime('now','localtime') WHERE id = ?"
+          ).run(orderId);
+        } catch (_) { /* カラム未存在の場合は無視 */ }
+
+        replyText = `✅ 発注 #${orderId} を承認しました。\n\n品名：${order.product_name}\n数量：${order.quantity}${unit}\n仕入先：${supplierName}\n\n📄 発注書：${poNumber}\n📧 ${supplierName}（${supplier.email}）に\n　 発注書メールを送信しました。\n\n納品希望日：${delStr}（7日後）`;
+      } else {
+        replyText = `✅ 発注 #${orderId} を承認しました。\n⚠️ メール送信に失敗しました。\n${supplierName}に直接ご連絡ください。\nTEL：${supplier.tel || supplier.phone || '—'}`;
+      }
+    } else {
+      // メール未設定
+      replyText = `✅ 発注 #${orderId} を承認しました。\n\n品名：${order.product_name}\n数量：${order.quantity}${unit}\n仕入先：${supplierName}\n\n📄 発注書：${poNumber}を生成しました。\n（仕入先メール未登録のため送信スキップ）`;
+    }
+  } catch (err) {
+    console.error('[handleApproveOrder] PDF生成エラー:', err.message);
+    replyText = `✅ 発注 #${orderId} を承認しました。\n⚠️ 発注書の生成に失敗しました: ${err.message}`;
+  }
+
   await client.replyMessage({
     replyToken,
-    messages: [
-      {
-        type: 'text',
-        text: `✅ 発注 #${orderId} を承認しました。\n\n品名: ${order.product_name}\n数量: ${order.quantity}\n仕入先: ${order.supplier_name || '未定'}\n\n仕入先への連絡を行ってください。`,
-      },
-    ],
+    messages: [{ type: 'text', text: replyText }],
   });
 }
 

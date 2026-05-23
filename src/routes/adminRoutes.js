@@ -6,6 +6,7 @@ const fs = require('fs');
 const { getDb } = require('../db/database');
 const { PDF_DIR, generateInvoicePdf } = require('../handlers/invoiceHandler');
 const { PDF_DIR_QUOTE } = require('../handlers/quoteHandler');
+const { PO_DIR, generatePurchaseOrderPdf } = require('../handlers/purchaseOrderHandler');
 const sheets = require('../integrations/sheetsSync');
 
 const router = express.Router();
@@ -52,6 +53,67 @@ router.get('/orders', (req, res) => {
       ? db.prepare(query).all(status)
       : db.prepare(query).all();
     res.json({ success: true, data: orders });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 発注書PDF ダウンロード
+router.get('/orders/:id/purchase-order/pdf', (req, res) => {
+  try {
+    const db = getDb();
+    const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(req.params.id);
+    if (!order) return res.status(404).json({ success: false, error: '発注が見つかりません' });
+    if (!order.purchase_order_path) {
+      return res.status(404).json({ success: false, error: '発注書PDFがありません。承認処理を行うと自動生成されます。' });
+    }
+    if (!fs.existsSync(order.purchase_order_path)) {
+      return res.status(404).json({ success: false, error: 'PDFファイルが存在しません' });
+    }
+    res.download(order.purchase_order_path, path.basename(order.purchase_order_path));
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 発注書メール再送
+router.post('/orders/:id/purchase-order/resend', async (req, res) => {
+  try {
+    const db = getDb();
+    const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(req.params.id);
+    if (!order) return res.status(404).json({ success: false, error: '発注が見つかりません' });
+
+    const supplier = order.supplier_id
+      ? db.prepare('SELECT * FROM suppliers WHERE id = ?').get(Number(order.supplier_id))
+      : null;
+
+    if (!supplier || !supplier.email) {
+      return res.status(400).json({ success: false, error: '仕入先のメールアドレスが登録されていません' });
+    }
+
+    // PDF生成（再生成）
+    const { pdfPath, poNumber } = await generatePurchaseOrderPdf(order, supplier);
+
+    // DBにパスを保存
+    try {
+      db.prepare(
+        "UPDATE orders SET purchase_order_path = ?, updated_at = datetime('now','localtime') WHERE id = ?"
+      ).run(pdfPath, order.id);
+    } catch (_) { /* カラム未存在は無視 */ }
+
+    const gmail = require('../integrations/gmailSend');
+    const sent = await gmail.sendPurchaseOrderEmail(order.supplier_id, order, pdfPath);
+
+    if (sent) {
+      try {
+        db.prepare(
+          "UPDATE orders SET email_sent = 1, email_sent_at = datetime('now','localtime'), updated_at = datetime('now','localtime') WHERE id = ?"
+        ).run(order.id);
+      } catch (_) { /* カラム未存在は無視 */ }
+      res.json({ success: true, data: { message: `${supplier.company_name}（${supplier.email}）に発注書メールを再送しました`, poNumber } });
+    } else {
+      res.status(500).json({ success: false, error: 'Gmail連携が設定されていません。.envのGmail設定を確認してください。' });
+    }
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

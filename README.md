@@ -293,17 +293,37 @@ GMAIL_REFRESH_TOKEN=1//xxxxxxxxxxxxxxxxxxxxxxxx
 
 ---
 
+### 手順 3b（代替）: getGmailToken.js でリフレッシュトークンを取得
+
+OAuth Playground の代わりに、プロジェクト付属のユーティリティを使う方法です。
+
+1. `.env` に `GMAIL_CLIENT_ID` と `GMAIL_CLIENT_SECRET` を設定
+2. 以下を実行：
+
+```bash
+node src/utils/getGmailToken.js
+```
+
+3. 表示された認証URLをブラウザで開いてGoogleアカウントで許可
+4. ページに表示された認証コードをコンソールに入力
+5. 表示されたリフレッシュトークンを `.env` の `GMAIL_REFRESH_TOKEN` に設定
+
+> ⚠️ 承認済みのリダイレクトURIに `urn:ietf:wg:oauth:2.0:oob` を追加してください（Google Cloud Console → 認証情報 → OAuthクライアント）。
+
+---
+
 ### Gmail で送信されるメール
 
 | 機能 | 送信タイミング | 送信先 |
 |---|---|---|
 | 請求書PDF添付 | `請求書メール送付` コマンド | 顧客のメールアドレス |
 | 発注確認 | 発注作成時 | 仕入先のメールアドレス |
+| **発注書PDF添付** | **発注承認時（自動）** | **仕入先のメールアドレス** |
 | 在庫アラート | 出庫後に発注点以下になった時 | `GMAIL_USER`（管理者） |
 | 月次レポート | 毎月1日 8:00 JST（自動）または `月次レポート送信` コマンド | `GMAIL_USER`（管理者） |
 
-> 顧客・仕入先のメールアドレスは `customers.email` / `suppliers.email` 列に登録してください
->（現在は管理画面からの編集UIは未実装。SQLite DBに直接 UPDATE するか、admin API経由で設定します）。
+> 顧客・仕入先のメールアドレスは `customers.email` / `suppliers.email` 列に登録してください。  
+> 管理画面の発注タブから発注書PDFのダウンロード・メール再送が可能です。
 
 ---
 
@@ -338,28 +358,32 @@ lumber-line-demo/
 │   ├── handlers/
 │   │   ├── messageHandler.js        # LINE テキスト/Postback ルーター
 │   │   ├── inventoryHandler.js      # 在庫・入出庫
-│   │   ├── orderHandler.js          # 発注
+│   │   ├── orderHandler.js          # 発注（承認時に発注書PDF自動生成）
 │   │   ├── invoiceHandler.js        # 請求書PDF・各種コマンド
 │   │   ├── quoteHandler.js          # 見積書PDF・掛け率
 │   │   ├── deliveryHandler.js       # 納品書PDF
+│   │   ├── purchaseOrderHandler.js  # 発注書PDF生成
 │   │   ├── calcHandler.js           # 材積計算
 │   │   ├── stockoutFlowHandler.js   # 出庫対話フロー
 │   │   └── stocktakeHandler.js      # 棚卸し対話フロー
 │   ├── integrations/
 │   │   ├── sheetsSync.js            # Google Sheets 連携
-│   │   └── gmailSend.js             # Gmail 送信連携
+│   │   └── gmailSend.js             # Gmail 送信連携（発注書メール含む）
 │   ├── line/
 │   │   ├── flexMessages.js          # Flex Message ビルダー
 │   │   └── richMenu.js              # リッチメニュー登録・PNG生成
 │   ├── routes/
 │   │   └── adminRoutes.js           # 管理REST API
-│   └── sessions/
-│       └── stocktakeSession.js      # インメモリセッション管理
+│   ├── sessions/
+│   │   └── stocktakeSession.js      # インメモリセッション管理
+│   └── utils/
+│       └── getGmailToken.js         # Gmail OAuth2 リフレッシュトークン取得ツール
 ├── public/
 │   └── index.html                   # 管理画面SPA
 ├── fonts/
 │   └── NotoSansJP-Regular.ttf       # 日本語フォント（PDFKit用）
 ├── invoices/                        # 生成された請求書PDF
+├── purchase_orders/                 # 生成された発注書PDF
 ├── pdfs/quotes/                     # 生成された見積書PDF
 ├── .env.example                     # 環境変数テンプレート
 └── README.md
